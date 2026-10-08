@@ -66,6 +66,27 @@ function initSchema(db: SQLite.SQLiteDatabase) {
       status TEXT NOT NULL,
       logged_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS goals (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      month TEXT NOT NULL,
+      target_metric_value REAL NOT NULL,
+      current_metric_value REAL NOT NULL,
+      unit TEXT NOT NULL,
+      status TEXT NOT NULL,
+      notes TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_milestones (
+      id TEXT PRIMARY KEY,
+      goal_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      week_number INTEGER NOT NULL,
+      is_completed INTEGER NOT NULL,
+      due_date TEXT
+    );
   `);
 
   // Seed default categories if empty

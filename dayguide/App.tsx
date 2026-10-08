@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Theme } from './src/theme/theme';
-import { TimeBlock, Category, Habit, UserProfile } from './src/types';
+import { TimeBlock, Category, Habit, UserProfile, MonthlyGoal, GoalMilestone } from './src/types';
 import {
   getProfile,
   saveProfile,
@@ -22,6 +22,10 @@ import {
   logBlockStatus,
   getHabits,
   toggleHabitCompletion,
+  getMonthlyGoals,
+  insertMonthlyGoal,
+  toggleMilestone,
+  deleteMonthlyGoal,
 } from './src/db/queries';
 import { getDatabase, seedTemplate } from './src/db/database';
 import { initNotifications, syncAllReminders } from './src/services/notificationService';
@@ -29,13 +33,15 @@ import { quickSnoozeBlock } from './src/services/scheduleService';
 import { TodayScreen } from './src/screens/TodayScreen';
 import { TimetableScreen } from './src/screens/TimetableScreen';
 import { HabitsScreen } from './src/screens/HabitsScreen';
+import { GoalsScreen } from './src/screens/GoalsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { BlockModal } from './src/components/BlockModal';
+import { NewGoalModal } from './src/components/NewGoalModal';
 import { OnboardingModal } from './src/components/OnboardingModal';
-import { Clock, Calendar, Flame, Settings } from 'lucide-react-native';
+import { Clock, Calendar, Target, Flame, Settings } from 'lucide-react-native';
 import { format } from 'date-fns';
 
-type TabType = 'today' | 'timetable' | 'habits' | 'settings';
+type TabType = 'today' | 'timetable' | 'goals' | 'habits' | 'settings';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('today');
@@ -43,6 +49,7 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [todayBlocks, setTodayBlocks] = useState<TimeBlock[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [goals, setGoals] = useState<MonthlyGoal[]>([]);
   
   // Timetable view state
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<number>(new Date().getDay());
@@ -51,9 +58,11 @@ export default function App() {
   // Modals
   const [blockModalVisible, setBlockModalVisible] = useState(false);
   const [editingBlock, setEditingBlock] = useState<TimeBlock | null>(null);
+  const [newGoalModalVisible, setNewGoalModalVisible] = useState(false);
   const [onboardingVisible, setOnboardingVisible] = useState(false);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const currentMonthStr = format(new Date(), 'yyyy-MM');
   const currentDayOfWeek = new Date().getDay();
 
   // Initialize DB and load data
@@ -71,6 +80,7 @@ export default function App() {
       } else {
         refreshBlocks();
         refreshHabits();
+        refreshGoals();
       }
     } catch (err) {
       console.error('Initialization error:', err);
@@ -93,6 +103,11 @@ export default function App() {
   const refreshHabits = () => {
     const habitList = getHabits();
     setHabits(habitList);
+  };
+
+  const refreshGoals = () => {
+    const goalsList = getMonthlyGoals(currentMonthStr);
+    setGoals(goalsList);
   };
 
   // Handle Onboarding Completion
@@ -120,6 +135,7 @@ export default function App() {
     setTodayBlocks(blocks);
     setTimetableBlocks(blocks);
     refreshHabits();
+    refreshGoals();
     syncAllReminders(blocks, 10);
   };
 
@@ -178,6 +194,51 @@ export default function App() {
     refreshHabits();
   };
 
+  // Goal actions
+  const handleToggleMilestone = (milestoneId: string) => {
+    toggleMilestone(milestoneId);
+    refreshGoals();
+  };
+
+  const handleSaveNewGoal = (
+    goalData: Omit<MonthlyGoal, 'id' | 'milestones'>,
+    milestones: Omit<GoalMilestone, 'id' | 'goalId'>[]
+  ) => {
+    insertMonthlyGoal(goalData, milestones);
+    refreshGoals();
+  };
+
+  const handleDeleteGoal = (goalId: string) => {
+    Alert.alert('Delete Goal', 'Are you sure you want to remove this monthly goal?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          deleteMonthlyGoal(goalId);
+          refreshGoals();
+        },
+      },
+    ]);
+  };
+
+  const handleConvertToTimeBlock = (milestone: GoalMilestone) => {
+    setEditingBlock({
+      id: '',
+      title: milestone.title,
+      categoryId: 'work',
+      startTime: '10:00',
+      endTime: '11:30',
+      durationMinutes: 90,
+      isRecurring: false,
+      daysOfWeek: [currentDayOfWeek],
+      isFixed: false,
+      priority: 'P0',
+      notes: `Goal Milestone: Week ${milestone.weekNumber}`,
+    });
+    setBlockModalVisible(true);
+  };
+
   // Template switch from Settings
   const handleResetToArchetype = (archetype: 'freelancer' | 'student' | 'balanced') => {
     Alert.alert(
@@ -192,6 +253,7 @@ export default function App() {
             seedTemplate(archetype);
             refreshBlocks();
             refreshHabits();
+            refreshGoals();
           },
         },
       ]
@@ -245,6 +307,19 @@ export default function App() {
           />
         )}
 
+        {currentTab === 'goals' && (
+          <GoalsScreen
+            goals={goals}
+            categories={categories}
+            currentMonth={currentMonthStr}
+            onToggleMilestone={handleToggleMilestone}
+            onDeleteGoal={handleDeleteGoal}
+            onNewGoalPress={() => setNewGoalModalVisible(true)}
+            onConvertToTimeBlock={handleConvertToTimeBlock}
+            onRefresh={refreshGoals}
+          />
+        )}
+
         {currentTab === 'habits' && (
           <HabitsScreen
             habits={habits}
@@ -270,7 +345,7 @@ export default function App() {
           activeOpacity={0.8}
         >
           <Clock
-            size={22}
+            size={20}
             color={currentTab === 'today' ? Theme.colors.primaryLight : Theme.colors.textMuted}
           />
           <Text
@@ -289,7 +364,7 @@ export default function App() {
           activeOpacity={0.8}
         >
           <Calendar
-            size={22}
+            size={20}
             color={currentTab === 'timetable' ? Theme.colors.primaryLight : Theme.colors.textMuted}
           />
           <Text
@@ -300,18 +375,40 @@ export default function App() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.tabItem, currentTab === 'goals' && styles.tabItemActive]}
+          onPress={() => {
+            setCurrentTab('goals');
+            refreshGoals();
+          }}
+          activeOpacity={0.8}
+        >
+          <Target
+            size={20}
+            color={currentTab === 'goals' ? Theme.colors.accent : Theme.colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.tabLabel,
+              currentTab === 'goals' && { color: Theme.colors.accent, fontWeight: '800' },
+            ]}
+          >
+            Goals
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.tabItem, currentTab === 'habits' && styles.tabItemActive]}
           onPress={() => setCurrentTab('habits')}
           activeOpacity={0.8}
         >
           <Flame
-            size={22}
+            size={20}
             color={currentTab === 'habits' ? Theme.colors.warning : Theme.colors.textMuted}
           />
           <Text
             style={[
               styles.tabLabel,
-              currentTab === 'habits' && { color: Theme.colors.warning, fontWeight: '700' },
+              currentTab === 'habits' && { color: Theme.colors.warning, fontWeight: '800' },
             ]}
           >
             Habits
@@ -324,7 +421,7 @@ export default function App() {
           activeOpacity={0.8}
         >
           <Settings
-            size={22}
+            size={20}
             color={currentTab === 'settings' ? Theme.colors.primaryLight : Theme.colors.textMuted}
           />
           <Text
@@ -343,6 +440,15 @@ export default function App() {
         onClose={() => setBlockModalVisible(false)}
         onSave={handleSaveBlock}
         onDelete={handleDeleteBlock}
+      />
+
+      {/* New Goal Modal */}
+      <NewGoalModal
+        visible={newGoalModalVisible}
+        categories={categories}
+        currentMonth={currentMonthStr}
+        onClose={() => setNewGoalModalVisible(false)}
+        onSave={handleSaveNewGoal}
       />
 
       {/* Onboarding Questionnaire Modal */}
@@ -386,7 +492,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 6,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: Theme.radii.md,
   },
   tabItemActive: {
@@ -394,9 +500,9 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     color: Theme.colors.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    marginTop: 4,
+    marginTop: 3,
   },
   tabLabelActive: {
     color: Theme.colors.primaryLight,

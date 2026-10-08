@@ -207,6 +207,154 @@ export function toggleHabitCompletion(habitId: string, todayStr: string): void {
   }
 }
 
+// ==================== GOALS & MILESTONES ====================
+
+export function getMonthlyGoals(monthStr: string): import('../types').MonthlyGoal[] {
+  const db = getDatabase();
+  const goalRows = db.getAllSync<any>(
+    'SELECT * FROM goals WHERE month = ? ORDER BY title ASC',
+    [monthStr]
+  );
+
+  const goals: import('../types').MonthlyGoal[] = [];
+
+  for (const g of goalRows) {
+    const milestoneRows = db.getAllSync<any>(
+      'SELECT * FROM goal_milestones WHERE goal_id = ? ORDER BY week_number ASC',
+      [g.id]
+    );
+
+    goals.push({
+      id: g.id,
+      title: g.title,
+      categoryId: g.category_id,
+      month: g.month,
+      targetMetricValue: g.target_metric_value,
+      currentMetricValue: g.current_metric_value,
+      unit: g.unit,
+      status: g.status,
+      notes: g.notes || '',
+      milestones: milestoneRows.map((m) => ({
+        id: m.id,
+        goalId: m.goal_id,
+        title: m.title,
+        weekNumber: m.week_number,
+        isCompleted: Boolean(m.is_completed),
+        dueDate: m.due_date || undefined,
+      })),
+    });
+  }
+
+  // If no goals for this month, seed a default starter goal to demonstrate breakdown
+  if (goals.length === 0) {
+    const starterGoal = insertMonthlyGoal(
+      {
+        title: 'Master React Native & Ship DayGuide APK',
+        categoryId: 'work',
+        month: monthStr,
+        targetMetricValue: 4,
+        currentMetricValue: 2,
+        unit: 'milestones',
+        status: 'in_progress',
+        notes: 'Personal milestone: Complete DayGuide, test notifications, and build production APK.',
+      },
+      [
+        { title: 'Week 1: Core Architecture, SQLite schema & Today Cockpit', weekNumber: 1, isCompleted: true },
+        { title: 'Week 2: Goal Tracker & Monthly Breakdown Engine', weekNumber: 2, isCompleted: true },
+        { title: 'Week 3: Adaptive Re-planning & Push Alarms on Android', weekNumber: 3, isCompleted: false },
+        { title: 'Week 4: Final APK build, testing & personal installation', weekNumber: 4, isCompleted: false },
+      ]
+    );
+    goals.push(starterGoal);
+  }
+
+  return goals;
+}
+
+export function insertMonthlyGoal(
+  goalData: Omit<import('../types').MonthlyGoal, 'id' | 'milestones'>,
+  milestonesData: Omit<import('../types').GoalMilestone, 'id' | 'goalId'>[]
+): import('../types').MonthlyGoal {
+  const db = getDatabase();
+  const goalId = `goal_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  db.runSync(
+    `INSERT INTO goals 
+     (id, title, category_id, month, target_metric_value, current_metric_value, unit, status, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      goalId,
+      goalData.title,
+      goalData.categoryId,
+      goalData.month,
+      goalData.targetMetricValue,
+      goalData.currentMetricValue,
+      goalData.unit,
+      goalData.status,
+      goalData.notes || '',
+    ]
+  );
+
+  const createdMilestones: import('../types').GoalMilestone[] = [];
+
+  for (let i = 0; i < milestonesData.length; i++) {
+    const m = milestonesData[i];
+    const mId = `mile_${goalId}_${i + 1}`;
+    db.runSync(
+      `INSERT INTO goal_milestones (id, goal_id, title, week_number, is_completed, due_date)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [mId, goalId, m.title, m.weekNumber, m.isCompleted ? 1 : 0, m.dueDate || '']
+    );
+    createdMilestones.push({
+      id: mId,
+      goalId,
+      title: m.title,
+      weekNumber: m.weekNumber,
+      isCompleted: m.isCompleted,
+      dueDate: m.dueDate,
+    });
+  }
+
+  return {
+    ...goalData,
+    id: goalId,
+    milestones: createdMilestones,
+  };
+}
+
+export function toggleMilestone(milestoneId: string): void {
+  const db = getDatabase();
+  const milestone = db.getFirstSync<any>(
+    'SELECT * FROM goal_milestones WHERE id = ?',
+    [milestoneId]
+  );
+  if (!milestone) return;
+
+  const nextState = milestone.is_completed ? 0 : 1;
+  db.runSync(
+    'UPDATE goal_milestones SET is_completed = ? WHERE id = ?',
+    [nextState, milestoneId]
+  );
+
+  // Update parent goal current metric
+  const completedCount = db.getFirstSync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM goal_milestones WHERE goal_id = ? AND is_completed = 1',
+    [milestone.goal_id]
+  );
+  if (completedCount) {
+    db.runSync(
+      'UPDATE goals SET current_metric_value = ? WHERE id = ?',
+      [completedCount.count, milestone.goal_id]
+    );
+  }
+}
+
+export function deleteMonthlyGoal(goalId: string): void {
+  const db = getDatabase();
+  db.runSync('DELETE FROM goals WHERE id = ?', [goalId]);
+  db.runSync('DELETE FROM goal_milestones WHERE goal_id = ?', [goalId]);
+}
+
 // ==================== BACKUP & RESTORE ====================
 
 export function exportBackupJson(): string {
@@ -215,14 +363,18 @@ export function exportBackupJson(): string {
   const timeBlocks = getAllTimeBlocks();
   const habits = getHabits();
   const logs = db.getAllSync<any>('SELECT * FROM completion_logs');
+  const goals = db.getAllSync<any>('SELECT * FROM goals');
+  const milestones = db.getAllSync<any>('SELECT * FROM goal_milestones');
 
   return JSON.stringify({
-    version: '1.0',
+    version: '1.1',
     exportedAt: new Date().toISOString(),
     profile,
     timeBlocks,
     habits,
     completionLogs: logs,
+    goals,
+    goalMilestones: milestones,
   }, null, 2);
 }
 
@@ -260,3 +412,4 @@ function mapRowToTimeBlock(r: any): TimeBlock {
     notes: r.notes || '',
   };
 }
+

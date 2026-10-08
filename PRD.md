@@ -130,10 +130,21 @@ timeline
 - **[FR-4.5] Quiet Hours & DND Respect:**
   - Adheres to Android Do Not Disturb settings and user-specified quiet hours.
 
-### 6.5 Task & Habit Tracking Engine (P1)
-- **[FR-5.1] Task Drawer:** Backlog of unallocated tasks that can be dragged directly into timetable empty slots.
-- **[FR-5.2] Habit Streaks:** Daily and weekly streak counters for recurring behaviors (e.g., Workout, Reading, Devotion).
-- **[FR-5.3] History & Audit Log:** Timestamped completion log for each block, habit, and task.
+### 6.5 Monthly Goal Tracker & Breakdown Engine (P0)
+- **[FR-5.1] Monthly Outcome Goals:** Define high-level goals for the current month across categories (Deep Work, Health, Learning, Personal).
+- **[FR-5.2] 4-Week Structured Decomposition:**
+  - Automatically helps break each monthly goal into 4 weekly action milestones:
+    - *Week 1:* Foundation, setup, and initial 25% target.
+    - *Week 2:* Core execution sprint (50% target).
+    - *Week 3:* Iteration, deep momentum, and 75% target.
+    - *Week 4:* Final wrap-up, review, and shipping.
+- **[FR-5.3] Milestone to Timetable Bridge:** Single-tap to schedule any weekly milestone directly as a focused TimeBlock in the daily timetable.
+- **[FR-5.4] Visual Progress Tracking:** Dynamic percentage completion bar and completed milestones counter.
+
+### 6.6 Task & Habit Tracking Engine (P1)
+- **[FR-6.1] Task Drawer:** Backlog of unallocated tasks that can be dragged directly into timetable empty slots.
+- **[FR-6.2] Habit Streaks:** Daily and weekly streak counters for recurring behaviors (e.g., Workout, Reading, Devotion).
+- **[FR-6.3] History & Audit Log:** Timestamped completion log for each block, habit, and task.
 
 ### 6.6 Adaptive Re-Planning (P1)
 - **[FR-6.1] Missed Block Detection:** Detects when a scheduled block expires without being marked "Done".

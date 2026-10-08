@@ -55,3 +55,26 @@ export interface CompletionLog {
   status: 'done' | 'skipped' | 'snoozed';
   loggedAt: string;
 }
+
+export interface GoalMilestone {
+  id: string;
+  goalId: string;
+  title: string;
+  weekNumber: number; // 1, 2, 3, 4
+  isCompleted: boolean;
+  dueDate?: string;
+}
+
+export interface MonthlyGoal {
+  id: string;
+  title: string;
+  categoryId: string;
+  month: string; // "YYYY-MM"
+  targetMetricValue: number;
+  currentMetricValue: number;
+  unit: string;
+  status: 'in_progress' | 'completed';
+  notes?: string;
+  milestones: GoalMilestone[];
+}
+

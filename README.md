@@ -12,9 +12,15 @@
 
 ---
 
-## 📱 Application Codebase
+## 📱 Application Codebase & Key Features
 
 The mobile application is located in the [`dayguide/`](./dayguide/) directory.
+
+- **Proactive Today Screen:** Live Now Hero card, minutes countdown, Done/Snooze/Skip buttons.
+- **7-Day Timetable:** Daily schedule with overlap conflict detection and customizable anchors.
+- **🎯 Monthly Goal Tracker:** Set high-level outcomes and break them down into structured **4-week action milestones** that bridge directly into your daily routine timetable!
+- **Habit & Streak Tracker:** Daily habit check-in and flame streaks.
+- **Local SQLite Engine:** 100% offline with zero cloud dependency.
 
 ### Quick Start (Wireless Mobile Preview)
 ```bash
