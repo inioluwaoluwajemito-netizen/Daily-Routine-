@@ -21,13 +21,15 @@ import {
   deleteTimeBlock,
   logBlockStatus,
   getHabits,
+  insertHabit,
   toggleHabitCompletion,
   getMonthlyGoals,
   insertMonthlyGoal,
   toggleMilestone,
   deleteMonthlyGoal,
+  seedTemplate,
 } from './src/db/queries';
-import { getDatabase, seedTemplate } from './src/db/database';
+import { getDatabase } from './src/db/database';
 import { initNotifications, syncAllReminders } from './src/services/notificationService';
 import { quickSnoozeBlock } from './src/services/scheduleService';
 import { TodayScreen } from './src/screens/TodayScreen';
@@ -185,12 +187,7 @@ export default function App() {
   };
 
   const handleAddHabit = (title: string, categoryId: string) => {
-    const db = getDatabase();
-    db.runSync(
-      `INSERT INTO habits (id, title, category_id, target_frequency, current_streak, best_streak)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [`habit_${Date.now()}`, title, categoryId, 7, 0, 0]
-    );
+    insertHabit(title, categoryId);
     refreshHabits();
   };
 

@@ -65,25 +65,41 @@ export const BlockModal: React.FC<BlockModalProps> = ({
   const handleSave = () => {
     if (!title.trim()) return;
 
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    const durationMinutes = Math.max(15, (endH * 60 + endM) - (startH * 60 + startM));
+    try {
+      const [startH = 9, startM = 0] = (startTime || '09:00').split(':').map(Number);
+      const [endH = 10, endM = 0] = (endTime || '10:00').split(':').map(Number);
+      const safeStartH = Number.isNaN(startH) ? 9 : startH;
+      const safeStartM = Number.isNaN(startM) ? 0 : startM;
+      const safeEndH = Number.isNaN(endH) ? 10 : endH;
+      const safeEndM = Number.isNaN(endM) ? 0 : endM;
+      
+      const durationMinutes = Math.max(
+        15,
+        (safeEndH * 60 + safeEndM) - (safeStartH * 60 + safeStartM)
+      );
 
-    const data: Omit<TimeBlock, 'id'> = {
-      title: title.trim(),
-      categoryId,
-      startTime,
-      endTime,
-      durationMinutes,
-      isRecurring,
-      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-      isFixed,
-      priority,
-      notes: notes.trim(),
-    };
+      const formattedStart = `${safeStartH.toString().padStart(2, '0')}:${safeStartM.toString().padStart(2, '0')}`;
+      const formattedEnd = `${safeEndH.toString().padStart(2, '0')}:${safeEndM.toString().padStart(2, '0')}`;
 
-    onSave(data, block?.id);
-    onClose();
+      const data: Omit<TimeBlock, 'id'> = {
+        title: title.trim(),
+        categoryId: categoryId || 'work',
+        startTime: formattedStart,
+        endTime: formattedEnd,
+        durationMinutes,
+        isRecurring: true,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        isFixed,
+        priority: priority || 'P1',
+        notes: notes.trim(),
+      };
+
+      onSave(data, block?.id || undefined);
+      onClose();
+    } catch (err) {
+      console.error('Error saving block:', err);
+      onClose();
+    }
   };
 
   return (

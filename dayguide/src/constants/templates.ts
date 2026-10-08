@@ -1,0 +1,32 @@
+export const ARCHETYPE_TEMPLATES = {
+  freelancer: [
+    { title: 'Morning Routine & Devotion', categoryId: 'personal', start: '07:00', end: '08:00', fixed: true, priority: 'P0' },
+    { title: 'Deep Work Block 1', categoryId: 'work', start: '08:30', end: '11:30', fixed: false, priority: 'P0' },
+    { title: 'Healthy Lunch & Walk', categoryId: 'health', start: '12:00', end: '13:00', fixed: true, priority: 'P1' },
+    { title: 'Deep Work Block 2 (Client Calls/Tasks)', categoryId: 'work', start: '13:30', end: '16:30', fixed: false, priority: 'P1' },
+    { title: 'Workout / Fitness', categoryId: 'health', start: '17:00', end: '18:00', fixed: false, priority: 'P0' },
+    { title: 'Dinner & Relaxation', categoryId: 'routine', start: '18:30', end: '19:30', fixed: true, priority: 'P2' },
+    { title: 'Skill Reading / Learning', categoryId: 'learning', start: '20:00', end: '21:00', fixed: false, priority: 'P1' },
+    { title: 'Evening Wrap-Up & Wind Down', categoryId: 'rest', start: '22:00', end: '22:45', fixed: true, priority: 'P0' },
+  ],
+  student: [
+    { title: 'Wake Up & Quick Breakfast', categoryId: 'routine', start: '06:30', end: '07:30', fixed: true, priority: 'P0' },
+    { title: 'Lecture / Class Session 1', categoryId: 'learning', start: '08:00', end: '11:00', fixed: true, priority: 'P0' },
+    { title: 'Lunch Break', categoryId: 'routine', start: '11:30', end: '12:30', fixed: true, priority: 'P2' },
+    { title: 'Lecture / Class Session 2', categoryId: 'learning', start: '13:00', end: '15:30', fixed: true, priority: 'P0' },
+    { title: 'Exercise & Outdoor Break', categoryId: 'health', start: '16:00', end: '17:00', fixed: false, priority: 'P1' },
+    { title: 'Self-Study & Assignments', categoryId: 'work', start: '18:00', end: '20:30', fixed: false, priority: 'P0' },
+    { title: 'Dinner & Leisure', categoryId: 'routine', start: '20:30', end: '21:30', fixed: true, priority: 'P2' },
+    { title: 'Reading & Wind-Down', categoryId: 'rest', start: '22:00', end: '22:30', fixed: false, priority: 'P1' },
+  ],
+  balanced: [
+    { title: 'Morning Routine & Meditation', categoryId: 'personal', start: '07:00', end: '08:00', fixed: true, priority: 'P1' },
+    { title: 'Morning Focus Work', categoryId: 'work', start: '09:00', end: '12:00', fixed: false, priority: 'P0' },
+    { title: 'Lunch & Fresh Air', categoryId: 'health', start: '12:00', end: '13:00', fixed: true, priority: 'P1' },
+    { title: 'Afternoon Collaborative Tasks', categoryId: 'work', start: '13:30', end: '17:00', fixed: false, priority: 'P1' },
+    { title: 'Gym / Jogging Session', categoryId: 'health', start: '17:30', end: '18:30', fixed: false, priority: 'P0' },
+    { title: 'Family & Dinner Time', categoryId: 'routine', start: '19:00', end: '20:30', fixed: true, priority: 'P1' },
+    { title: 'Personal Project / Reading', categoryId: 'learning', start: '20:30', end: '21:30', fixed: false, priority: 'P2' },
+    { title: 'Sleep Preparation', categoryId: 'rest', start: '22:00', end: '22:30', fixed: true, priority: 'P0' },
+  ],
+};
