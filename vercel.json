@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "buildCommand": "cd dayguide && npm install && npx expo export -p web",
+  "outputDirectory": "dayguide/dist",
+  "cleanUrls": true
+}

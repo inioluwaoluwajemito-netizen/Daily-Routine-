@@ -1,0 +1,10 @@
+{
+  "name": "daily-routine",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd dayguide && npm install && npx expo export -p web",
+    "export": "cd dayguide && npx expo export -p web",
+    "start": "cd dayguide && npm start"
+  }
+}
