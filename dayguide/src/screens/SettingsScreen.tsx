@@ -8,7 +8,7 @@ import {
   Alert,
   Share,
 } from 'react-native';
-import { UserProfile } from '../types';
+import { UserProfile, UserAccount, ArchetypeType } from '../types';
 import { Theme } from '../theme/theme';
 import {
   Bell,
@@ -18,21 +18,28 @@ import {
   Download,
   RotateCcw,
   Sparkles,
-  Smartphone,
+  Heart,
+  LogOut,
+  User,
+  Sliders,
 } from 'lucide-react-native';
 import { sendInstantTestNotification } from '../services/notificationService';
 import { exportBackupJson } from '../db/queries';
 
 interface SettingsScreenProps {
   profile: UserProfile | null;
-  onResetToArchetype: (archetype: 'freelancer' | 'student' | 'balanced') => void;
+  currentUser?: UserAccount | null;
+  onResetToArchetype: (archetype: 'prayer' | 'freelancer' | 'student' | 'balanced') => void;
   onOpenOnboarding: () => void;
+  onLogout: () => void;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   profile,
+  currentUser,
   onResetToArchetype,
   onOpenOnboarding,
+  onLogout,
 }) => {
   const handleTestNotification = async () => {
     await sendInstantTestNotification();
@@ -51,20 +58,52 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   };
 
+  const handleConfirmLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to log out of your DayGuide profile?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: onLogout,
+        },
+      ]
+    );
+  };
+
+  const archetypeDisplay = profile?.archetype === 'prayer'
+    ? 'SPIRITUAL RHYTHM & PRAYER LIFE'
+    : (profile?.archetype ? profile.archetype.toUpperCase() : 'PRAYER LIFE');
+
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        {/* Profile Card */}
+        {/* Profile & Account Header Card */}
         <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Sparkles size={24} color={Theme.colors.primaryLight} />
-          </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{profile?.name || 'Owner (You)'}</Text>
-            <Text style={styles.profileSub}>
-              Archetype: {profile?.archetype ? profile.archetype.toUpperCase() : 'FREELANCER'}
+          <View style={[styles.avatar, { backgroundColor: currentUser?.avatarColor || Theme.colors.primary }]}>
+            <Text style={styles.avatarInitial}>
+              {(currentUser?.name || profile?.name || 'U').charAt(0).toUpperCase()}
             </Text>
           </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>{currentUser?.name || profile?.name || 'DayGuide User'}</Text>
+            {currentUser?.email && (
+              <Text style={styles.profileEmail}>{currentUser.email}</Text>
+            )}
+            <View style={styles.archetypeBadge}>
+              <Text style={styles.archetypeBadgeText}>{archetypeDisplay}</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={handleConfirmLogout}
+            activeOpacity={0.7}
+          >
+            <LogOut size={16} color={Theme.colors.danger} />
+            <Text style={styles.logoutBtnText}>Sign Out</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Section: Anchors */}
@@ -75,7 +114,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Sun size={18} color={Theme.colors.warning} />
               <Text style={styles.rowLabel}>Wake-up Target</Text>
             </View>
-            <Text style={styles.rowValue}>{profile?.wakeTime || '07:00'} AM</Text>
+            <Text style={styles.rowValue}>{profile?.wakeTime || '05:30'} AM</Text>
           </View>
           <View style={styles.separator} />
           <View style={styles.row}>
@@ -83,11 +122,83 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Moon size={18} color={Theme.colors.purple} />
               <Text style={styles.rowLabel}>Bedtime Target</Text>
             </View>
-            <Text style={styles.rowValue}>{profile?.sleepTime || '23:00'} PM</Text>
+            <Text style={styles.rowValue}>{profile?.sleepTime || '22:30'} PM</Text>
           </View>
         </View>
 
-        {/* Section: Smart Reminders */}
+        {/* Section: Routines & Archetypes */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Routines & Archetypes</Text>
+          <TouchableOpacity onPress={onOpenOnboarding}>
+            <Text style={styles.linkTextSmall}>Re-run Setup</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <TouchableOpacity
+            style={styles.btnRow}
+            onPress={() => onResetToArchetype('prayer')}
+          >
+            <View style={styles.rowLeft}>
+              <Heart size={18} color="#EC4899" />
+              <View>
+                <Text style={styles.rowLabel}>Spiritual Rhythm & Prayer Life</Text>
+                <Text style={styles.rowSub}>Morning prayer watch, scripture, midday & night devotion</Text>
+              </View>
+            </View>
+            <RotateCcw size={16} color={Theme.colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={styles.separator} />
+
+          <TouchableOpacity
+            style={styles.btnRow}
+            onPress={() => onResetToArchetype('freelancer')}
+          >
+            <View style={styles.rowLeft}>
+              <RotateCcw size={18} color={Theme.colors.primaryLight} />
+              <View>
+                <Text style={styles.rowLabel}>Freelancer / Creator Template</Text>
+                <Text style={styles.rowSub}>Deep work sprints, client check-ins, prayer & wind-down</Text>
+              </View>
+            </View>
+            <RotateCcw size={16} color={Theme.colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={styles.separator} />
+
+          <TouchableOpacity
+            style={styles.btnRow}
+            onPress={() => onResetToArchetype('student')}
+          >
+            <View style={styles.rowLeft}>
+              <RotateCcw size={18} color={Theme.colors.accent} />
+              <View>
+                <Text style={styles.rowLabel}>Student / Academic Template</Text>
+                <Text style={styles.rowSub}>Lecture blocks, study slots, morning & night prayer</Text>
+              </View>
+            </View>
+            <RotateCcw size={16} color={Theme.colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={styles.separator} />
+
+          <TouchableOpacity
+            style={styles.btnRow}
+            onPress={() => onResetToArchetype('balanced')}
+          >
+            <View style={styles.rowLeft}>
+              <RotateCcw size={18} color={Theme.colors.success} />
+              <View>
+                <Text style={styles.rowLabel}>Balanced Routine Template</Text>
+                <Text style={styles.rowSub}>9-to-5 structure, fitness, prayer and family time</Text>
+              </View>
+            </View>
+            <RotateCcw size={16} color={Theme.colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Section: Reminders & Alarms */}
         <Text style={styles.sectionTitle}>Notifications & Exact Alarms</Text>
         <View style={styles.card}>
           <TouchableOpacity style={styles.btnRow} onPress={handleTestNotification}>
@@ -95,67 +206,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Bell size={18} color={Theme.colors.primaryLight} />
               <View>
                 <Text style={styles.rowLabel}>Trigger Test Notification</Text>
-                <Text style={styles.rowSub}>Verify alarm permissions on phone</Text>
+                <Text style={styles.rowSub}>Verify alarm permissions on browser / phone</Text>
               </View>
             </View>
             <Text style={styles.linkText}>Test Now</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Section: Templates & Reset */}
-        <Text style={styles.sectionTitle}>Routines & Archetypes</Text>
-        <View style={styles.card}>
-          <TouchableOpacity
-            style={styles.btnRow}
-            onPress={() => onResetToArchetype('freelancer')}
-          >
-            <Text style={styles.rowLabel}>Load Freelancer / Creator Template</Text>
-            <RotateCcw size={16} color={Theme.colors.textMuted} />
-          </TouchableOpacity>
-          <View style={styles.separator} />
-          <TouchableOpacity
-            style={styles.btnRow}
-            onPress={() => onResetToArchetype('student')}
-          >
-            <Text style={styles.rowLabel}>Load Student / Academic Template</Text>
-            <RotateCcw size={16} color={Theme.colors.textMuted} />
-          </TouchableOpacity>
-          <View style={styles.separator} />
-          <TouchableOpacity
-            style={styles.btnRow}
-            onPress={() => onResetToArchetype('balanced')}
-          >
-            <Text style={styles.rowLabel}>Load Balanced Routine Template</Text>
-            <RotateCcw size={16} color={Theme.colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Section: Privacy & Data */}
-        <Text style={styles.sectionTitle}>Offline Storage & Backup</Text>
+        {/* Section: Privacy & Multi-User Data */}
+        <Text style={styles.sectionTitle}>Privacy & Offline Security</Text>
         <View style={styles.card}>
           <View style={styles.row}>
             <View style={styles.rowLeft}>
               <ShieldCheck size={18} color={Theme.colors.success} />
               <View>
-                <Text style={styles.rowLabel}>100% Offline Local Database</Text>
-                <Text style={styles.rowSub}>Stored on device (dayguide.db)</Text>
+                <Text style={styles.rowLabel}>Isolated Multi-User Local Storage</Text>
+                <Text style={styles.rowSub}>
+                  Each account's schedule, prayer life, and habits remain strictly private.
+                </Text>
               </View>
             </View>
           </View>
           <View style={styles.separator} />
           <TouchableOpacity style={styles.btnRow} onPress={handleExportBackup}>
             <View style={styles.rowLeft}>
-              <Download size={18} color={Theme.colors.accent} />
-              <Text style={styles.rowLabel}>Export Backup (JSON)</Text>
+              <Download size={18} color={Theme.colors.textSecondary} />
+              <Text style={styles.rowLabel}>Export Schedule Backup (JSON)</Text>
             </View>
             <Text style={styles.linkText}>Export</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* App Info Footer */}
-        <View style={styles.infoFooter}>
-          <Smartphone size={16} color={Theme.colors.textMuted} />
-          <Text style={styles.footerText}>DayGuide v1.0 • Personal Android App</Text>
         </View>
       </ScrollView>
     </View>
@@ -169,7 +248,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: Theme.spacing.md,
-    paddingTop: 16,
+    paddingTop: Theme.spacing.lg,
     paddingBottom: 100,
   },
   profileCard: {
@@ -178,69 +257,113 @@ const styles = StyleSheet.create({
     padding: Theme.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: Theme.spacing.lg,
     borderWidth: 1,
     borderColor: Theme.colors.border,
-    marginBottom: Theme.spacing.lg,
   },
   avatar: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    borderWidth: 1,
-    borderColor: Theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: 12,
+  },
+  avatarInitial: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800',
   },
   profileInfo: {
     flex: 1,
   },
   profileName: {
     color: Theme.colors.textPrimary,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
   },
-  profileSub: {
+  profileEmail: {
+    color: Theme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 1,
+  },
+  archetypeBadge: {
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  archetypeBadgeText: {
+    color: Theme.colors.primaryLight,
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Theme.radii.md,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  logoutBtnText: {
+    color: Theme.colors.danger,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  sectionTitle: {
+    color: Theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    marginRight: 4,
+  },
+  linkTextSmall: {
     color: Theme.colors.primaryLight,
     fontSize: 12,
     fontWeight: '700',
-    marginTop: 2,
-  },
-  sectionTitle: {
-    color: Theme.colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-    marginTop: 10,
   },
   card: {
     backgroundColor: Theme.colors.surfaceCard,
     borderRadius: Theme.radii.lg,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    marginBottom: Theme.spacing.lg,
     borderWidth: 1,
     borderColor: Theme.colors.border,
-    paddingHorizontal: Theme.spacing.md,
-    marginBottom: Theme.spacing.md,
   },
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
   },
   btnRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
   },
   rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     flex: 1,
+    paddingRight: 8,
   },
   rowLabel: {
     color: Theme.colors.textPrimary,
@@ -253,29 +376,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   rowValue: {
-    color: Theme.colors.accent,
+    color: Theme.colors.textSecondary,
     fontSize: 14,
-    fontWeight: '700',
-  },
-  linkText: {
-    color: Theme.colors.primaryLight,
-    fontSize: 13,
     fontWeight: '700',
   },
   separator: {
     height: 1,
     backgroundColor: Theme.colors.border,
   },
-  infoFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 20,
-  },
-  footerText: {
-    color: Theme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: '500',
+  linkText: {
+    color: Theme.colors.primaryLight,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

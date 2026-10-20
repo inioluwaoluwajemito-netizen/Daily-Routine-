@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Theme } from './src/theme/theme';
-import { TimeBlock, Category, Habit, UserProfile, MonthlyGoal, GoalMilestone } from './src/types';
+import { TimeBlock, Category, Habit, UserProfile, MonthlyGoal, GoalMilestone, UserAccount, ArchetypeType } from './src/types';
 import {
   getProfile,
   saveProfile,
@@ -28,6 +28,8 @@ import {
   toggleMilestone,
   deleteMonthlyGoal,
   seedTemplate,
+  getCurrentUser,
+  logoutUser,
 } from './src/db/queries';
 import { getDatabase } from './src/db/database';
 import { initNotifications, syncAllReminders } from './src/services/notificationService';
@@ -37,6 +39,7 @@ import { TimetableScreen } from './src/screens/TimetableScreen';
 import { HabitsScreen } from './src/screens/HabitsScreen';
 import { GoalsScreen } from './src/screens/GoalsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { AuthScreen } from './src/components/AuthScreen';
 import { BlockModal } from './src/components/BlockModal';
 import { NewGoalModal } from './src/components/NewGoalModal';
 import { OnboardingModal } from './src/components/OnboardingModal';
@@ -46,6 +49,7 @@ import { format } from 'date-fns';
 type TabType = 'today' | 'timetable' | 'goals' | 'habits' | 'settings';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [currentTab, setCurrentTab] = useState<TabType>('today');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -67,10 +71,10 @@ export default function App() {
   const currentMonthStr = format(new Date(), 'yyyy-MM');
   const currentDayOfWeek = new Date().getDay();
 
-  // Initialize DB and load data
+  // Initialize DB and load data for active user
   const loadData = useCallback(() => {
     try {
-      getDatabase(); // initialize schema
+      getDatabase(); // initialize schema on native if applicable
       const loadedProfile = getProfile();
       setProfile(loadedProfile);
 
@@ -90,8 +94,12 @@ export default function App() {
   }, [selectedDayOfWeek]);
 
   useEffect(() => {
-    loadData();
-    initNotifications();
+    const user = getCurrentUser();
+    setCurrentUser(user);
+    if (user) {
+      loadData();
+      initNotifications();
+    }
   }, [loadData]);
 
   const refreshBlocks = () => {
@@ -112,20 +120,52 @@ export default function App() {
     setGoals(goalsList);
   };
 
+  // Auth Handlers
+  const handleAuthSuccess = (user: UserAccount) => {
+    setCurrentUser(user);
+    const loadedProfile = getProfile();
+    setProfile(loadedProfile);
+    const loadedCats = getCategories();
+    setCategories(loadedCats);
+
+    if (!loadedProfile || !loadedProfile.isOnboarded) {
+      setOnboardingVisible(true);
+    } else {
+      refreshBlocks();
+      refreshHabits();
+      refreshGoals();
+      initNotifications();
+    }
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setCurrentUser(null);
+    setProfile(null);
+    setTodayBlocks([]);
+    setTimetableBlocks([]);
+    setHabits([]);
+    setGoals([]);
+    setOnboardingVisible(false);
+  };
+
   // Handle Onboarding Completion
   const handleOnboardingComplete = (
-    archetype: 'freelancer' | 'student' | 'balanced',
+    archetype: 'prayer' | 'freelancer' | 'student' | 'balanced',
     wakeTime: string,
     sleepTime: string
   ) => {
     seedTemplate(archetype);
     const newProfile: UserProfile = {
-      name: 'Owner',
+      userId: currentUser?.id,
+      name: currentUser?.name || 'Owner',
+      email: currentUser?.email,
       wakeTime,
       sleepTime,
       archetype,
       notificationsEnabled: true,
       reminderLeadMinutes: 10,
+      includePrayerLife: true,
       isOnboarded: true,
     };
     saveProfile(newProfile);
@@ -223,9 +263,9 @@ export default function App() {
     setEditingBlock({
       id: '',
       title: milestone.title,
-      categoryId: 'work',
-      startTime: '10:00',
-      endTime: '11:30',
+      categoryId: 'personal',
+      startTime: '09:00',
+      endTime: '10:30',
       durationMinutes: 90,
       isRecurring: false,
       daysOfWeek: [currentDayOfWeek],
@@ -237,10 +277,10 @@ export default function App() {
   };
 
   // Template switch from Settings
-  const handleResetToArchetype = (archetype: 'freelancer' | 'student' | 'balanced') => {
+  const handleResetToArchetype = (archetype: 'prayer' | 'freelancer' | 'student' | 'balanced') => {
     Alert.alert(
       'Load Template Routine',
-      `This will replace existing routine blocks with the default ${archetype.toUpperCase()} schedule. Continue?`,
+      `This will update your routine blocks with the default ${archetype.toUpperCase()} schedule. Continue?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -248,6 +288,11 @@ export default function App() {
           style: 'destructive',
           onPress: () => {
             seedTemplate(archetype);
+            if (profile) {
+              const updated = { ...profile, archetype };
+              saveProfile(updated);
+              setProfile(updated);
+            }
             refreshBlocks();
             refreshHabits();
             refreshGoals();
@@ -256,6 +301,16 @@ export default function App() {
       ]
     );
   };
+
+  // If user is not logged in, render the AuthScreen directly
+  if (!currentUser) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor={Theme.colors.background} />
+        <AuthScreen onAuthSuccess={handleAuthSuccess} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -328,8 +383,10 @@ export default function App() {
         {currentTab === 'settings' && (
           <SettingsScreen
             profile={profile}
+            currentUser={currentUser}
             onResetToArchetype={handleResetToArchetype}
             onOpenOnboarding={() => setOnboardingVisible(true)}
+            onLogout={handleLogout}
           />
         )}
       </View>
@@ -451,6 +508,7 @@ export default function App() {
       {/* Onboarding Questionnaire Modal */}
       <OnboardingModal
         visible={onboardingVisible}
+        userName={currentUser?.name}
         onComplete={handleOnboardingComplete}
       />
     </SafeAreaView>

@@ -6,7 +6,9 @@ dayguide/node_modules/
 .expo/
 dayguide/.expo/
 dist/
+dayguide/dist/
 web-build/
+*.log
 
 # Native builds
 *.orig.*

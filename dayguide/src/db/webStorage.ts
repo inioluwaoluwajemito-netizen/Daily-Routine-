@@ -1,14 +1,10 @@
-import { TimeBlock, Habit, UserProfile, Category, CompletionLog, MonthlyGoal, GoalMilestone } from '../types';
+import { TimeBlock, Habit, UserProfile, Category, CompletionLog, MonthlyGoal, GoalMilestone, UserAccount, ArchetypeType } from '../types';
 import { ARCHETYPE_TEMPLATES } from '../constants/templates';
 
-const KEYS = {
-  PROFILE: 'dayguide_profile',
+const BASE_KEYS = {
+  USERS: 'dayguide_users',
+  CURRENT_USER_ID: 'dayguide_current_user_id',
   CATEGORIES: 'dayguide_categories',
-  TIME_BLOCKS: 'dayguide_time_blocks',
-  HABITS: 'dayguide_habits',
-  COMPLETION_LOGS: 'dayguide_completion_logs',
-  GOALS: 'dayguide_goals',
-  MILESTONES: 'dayguide_goal_milestones',
 };
 
 // Memory fallback if localStorage is unavailable
@@ -36,37 +32,174 @@ function setItem(key: string, value: string): void {
   }
 }
 
+function removeItem(key: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+    delete memoryStore[key];
+  } catch (e) {
+    delete memoryStore[key];
+  }
+}
+
 const DEFAULT_CATEGORIES: Category[] = [
+  { id: 'personal', name: 'Prayer & Spiritual Life', color: '#EC4899', iconName: 'heart' },
   { id: 'work', name: 'Deep Work & Projects', color: '#6366F1', iconName: 'briefcase' },
   { id: 'health', name: 'Health & Exercise', color: '#10B981', iconName: 'activity' },
   { id: 'learning', name: 'Learning & Reading', color: '#06B6D4', iconName: 'book-open' },
   { id: 'routine', name: 'Daily Routine & Meals', color: '#F59E0B', iconName: 'coffee' },
   { id: 'rest', name: 'Rest & Wind-down', color: '#A855F7', iconName: 'moon' },
-  { id: 'personal', name: 'Personal & Devotion', color: '#EC4899', iconName: 'heart' },
 ];
 
 export const WebStorage = {
+  // ==================== MULTI-USER AUTH ====================
+  getUsers(): UserAccount[] {
+    const raw = getItem(BASE_KEYS.USERS);
+    if (!raw) {
+      // Default demo account
+      const defaultUsers: UserAccount[] = [
+        {
+          id: 'user_owner',
+          name: 'Owner',
+          email: 'user@dayguide.com',
+          password: 'password123',
+          avatarColor: '#6366F1',
+          createdAt: new Date().toISOString(),
+        },
+      ];
+      setItem(BASE_KEYS.USERS, JSON.stringify(defaultUsers));
+      return defaultUsers;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  },
+
+  getCurrentUserId(): string | null {
+    return getItem(BASE_KEYS.CURRENT_USER_ID);
+  },
+
+  setCurrentUserId(userId: string | null): void {
+    if (userId) {
+      setItem(BASE_KEYS.CURRENT_USER_ID, userId);
+    } else {
+      removeItem(BASE_KEYS.CURRENT_USER_ID);
+    }
+  },
+
+  getCurrentUser(): UserAccount | null {
+    const currentId = this.getCurrentUserId();
+    if (!currentId) return null;
+    const users = this.getUsers();
+    return users.find((u) => u.id === currentId) || null;
+  },
+
+  registerUser(name: string, email: string, password: string): UserAccount {
+    const users = this.getUsers();
+    const cleanEmail = email.trim().toLowerCase();
+    const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (existing) {
+      throw new Error('An account with this email or username already exists.');
+    }
+
+    const colors = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6', '#06B6D4'];
+    const avatarColor = colors[Math.floor(Math.random() * colors.length)];
+
+    const newUser: UserAccount = {
+      id: `user_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      name: name.trim() || 'New User',
+      email: cleanEmail,
+      password: password,
+      avatarColor,
+      createdAt: new Date().toISOString(),
+    };
+
+    users.push(newUser);
+    setItem(BASE_KEYS.USERS, JSON.stringify(users));
+    this.setCurrentUserId(newUser.id);
+    return newUser;
+  },
+
+  loginUser(email: string, password: string): UserAccount {
+    const users = this.getUsers();
+    const cleanEmail = email.trim().toLowerCase();
+    const user = users.find(
+      (u) => u.email.toLowerCase() === cleanEmail || u.name.toLowerCase() === cleanEmail
+    );
+
+    if (!user) {
+      throw new Error('No account found with this email or username.');
+    }
+
+    if (user.password && user.password !== password) {
+      throw new Error('Incorrect password. Please try again.');
+    }
+
+    this.setCurrentUserId(user.id);
+    return user;
+  },
+
+  logoutUser(): void {
+    this.setCurrentUserId(null);
+  },
+
+  // Helper to get user-scoped storage key
+  getActiveUserId(): string {
+    return this.getCurrentUserId() || 'guest_user';
+  },
+
+  getUserKey(subKey: string): string {
+    const uid = this.getActiveUserId();
+    return `dayguide_${uid}_${subKey}`;
+  },
+
+  // ==================== PROFILE ====================
   getProfile(): UserProfile | null {
-    const raw = getItem(KEYS.PROFILE);
-    return raw ? JSON.parse(raw) : null;
+    const key = this.getUserKey('profile');
+    const raw = getItem(key);
+    if (!raw) {
+      // Check legacy non-scoped key as fallback
+      const legacy = getItem('dayguide_profile');
+      if (legacy && this.getActiveUserId() === 'user_owner') {
+        setItem(key, legacy);
+        return JSON.parse(legacy);
+      }
+      return null;
+    }
+    return JSON.parse(raw);
   },
 
   saveProfile(profile: UserProfile): void {
-    setItem(KEYS.PROFILE, JSON.stringify(profile));
+    const key = this.getUserKey('profile');
+    setItem(key, JSON.stringify(profile));
   },
 
+  // ==================== CATEGORIES ====================
   getCategories(): Category[] {
-    const raw = getItem(KEYS.CATEGORIES);
+    const raw = getItem(BASE_KEYS.CATEGORIES);
     if (!raw) {
-      setItem(KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
+      setItem(BASE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
       return DEFAULT_CATEGORIES;
     }
     return JSON.parse(raw);
   },
 
+  // ==================== TIME BLOCKS ====================
   getAllTimeBlocks(): TimeBlock[] {
-    const raw = getItem(KEYS.TIME_BLOCKS);
-    return raw ? JSON.parse(raw) : [];
+    const key = this.getUserKey('time_blocks');
+    const raw = getItem(key);
+    if (!raw) {
+      const legacy = getItem('dayguide_time_blocks');
+      if (legacy && this.getActiveUserId() === 'user_owner') {
+        setItem(key, legacy);
+        return JSON.parse(legacy);
+      }
+      return [];
+    }
+    return JSON.parse(raw);
   },
 
   getTimeBlocksForDay(dayOfWeek: number, dateStr: string): TimeBlock[] {
@@ -92,7 +225,7 @@ export const WebStorage = {
     const id = `block_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const newBlock: TimeBlock = { ...block, id };
     all.push(newBlock);
-    setItem(KEYS.TIME_BLOCKS, JSON.stringify(all));
+    setItem(this.getUserKey('time_blocks'), JSON.stringify(all));
     return newBlock;
   },
 
@@ -101,24 +234,26 @@ export const WebStorage = {
     const index = all.findIndex((b) => b.id === block.id);
     if (index >= 0) {
       all[index] = block;
-      setItem(KEYS.TIME_BLOCKS, JSON.stringify(all));
+      setItem(this.getUserKey('time_blocks'), JSON.stringify(all));
     }
   },
 
   deleteTimeBlock(id: string): void {
     const all = this.getAllTimeBlocks();
     const filtered = all.filter((b) => b.id !== id);
-    setItem(KEYS.TIME_BLOCKS, JSON.stringify(filtered));
+    setItem(this.getUserKey('time_blocks'), JSON.stringify(filtered));
   },
 
+  // ==================== COMPLETION LOGS ====================
   getCompletionLogsForDate(dateStr: string): CompletionLog[] {
-    const raw = getItem(KEYS.COMPLETION_LOGS);
+    const raw = getItem(this.getUserKey('completion_logs'));
     const all: CompletionLog[] = raw ? JSON.parse(raw) : [];
     return all.filter((l) => l.logDate === dateStr);
   },
 
   logBlockStatus(blockId: string, dateStr: string, scheduledTime: string, status: 'done' | 'skipped' | 'snoozed'): void {
-    const raw = getItem(KEYS.COMPLETION_LOGS);
+    const key = this.getUserKey('completion_logs');
+    const raw = getItem(key);
     const all: CompletionLog[] = raw ? JSON.parse(raw) : [];
     const id = `log_${dateStr}_${blockId}`;
     const filtered = all.filter((l) => l.id !== id);
@@ -130,12 +265,22 @@ export const WebStorage = {
       status,
       loggedAt: new Date().toISOString(),
     });
-    setItem(KEYS.COMPLETION_LOGS, JSON.stringify(filtered));
+    setItem(key, JSON.stringify(filtered));
   },
 
+  // ==================== HABITS ====================
   getHabits(): Habit[] {
-    const raw = getItem(KEYS.HABITS);
-    return raw ? JSON.parse(raw) : [];
+    const key = this.getUserKey('habits');
+    const raw = getItem(key);
+    if (!raw) {
+      const legacy = getItem('dayguide_habits');
+      if (legacy && this.getActiveUserId() === 'user_owner') {
+        setItem(key, legacy);
+        return JSON.parse(legacy);
+      }
+      return [];
+    }
+    return JSON.parse(raw);
   },
 
   insertHabit(title: string, categoryId: string): void {
@@ -148,7 +293,7 @@ export const WebStorage = {
       currentStreak: 0,
       bestStreak: 0,
     });
-    setItem(KEYS.HABITS, JSON.stringify(all));
+    setItem(this.getUserKey('habits'), JSON.stringify(all));
   },
 
   toggleHabitCompletion(habitId: string, todayStr: string): void {
@@ -164,35 +309,35 @@ export const WebStorage = {
       habit.bestStreak = Math.max(habit.bestStreak, habit.currentStreak);
       habit.lastCompletedDate = todayStr;
     }
-    setItem(KEYS.HABITS, JSON.stringify(all));
+    setItem(this.getUserKey('habits'), JSON.stringify(all));
   },
 
+  // ==================== GOALS ====================
   getMonthlyGoals(monthStr: string): MonthlyGoal[] {
-    const rawGoals = getItem(KEYS.GOALS);
-    const rawMilestones = getItem(KEYS.MILESTONES);
+    const rawGoals = getItem(this.getUserKey('goals'));
+    const rawMilestones = getItem(this.getUserKey('milestones'));
     const allGoals: any[] = rawGoals ? JSON.parse(rawGoals) : [];
     const allMilestones: GoalMilestone[] = rawMilestones ? JSON.parse(rawMilestones) : [];
 
     const monthGoals = allGoals.filter((g) => g.month === monthStr);
 
     if (monthGoals.length === 0) {
-      // Seed default
       const starter = this.insertMonthlyGoal(
         {
-          title: 'Master React Native & Ship DayGuide APK',
-          categoryId: 'work',
+          title: 'Consistent Daily Prayer Life & Discipline',
+          categoryId: 'personal',
           month: monthStr,
           targetMetricValue: 4,
-          currentMetricValue: 2,
-          unit: 'milestones',
+          currentMetricValue: 1,
+          unit: 'weeks',
           status: 'in_progress',
-          notes: 'Personal milestone: Complete DayGuide, test notifications, and build production APK.',
+          notes: 'Build a solid spiritual prayer foundation and disciplined daily schedule.',
         },
         [
-          { title: 'Week 1: Core Architecture, SQLite schema & Today Cockpit', weekNumber: 1, isCompleted: true },
-          { title: 'Week 2: Goal Tracker & Monthly Breakdown Engine', weekNumber: 2, isCompleted: true },
-          { title: 'Week 3: Adaptive Re-planning & Push Alarms on Android', weekNumber: 3, isCompleted: false },
-          { title: 'Week 4: Final APK build, testing & personal installation', weekNumber: 4, isCompleted: false },
+          { title: 'Week 1: Establish 30-min Morning Prayer & Devotion Routine', weekNumber: 1, isCompleted: true },
+          { title: 'Week 2: Midday Scripture Reading & Meditation Habit', weekNumber: 2, isCompleted: false },
+          { title: 'Week 3: Deep Work Sprints with Focused Prayer Watches', weekNumber: 3, isCompleted: false },
+          { title: 'Week 4: Night Thanksgiving & Consistent Sleep Anchors', weekNumber: 4, isCompleted: false },
         ]
       );
       return [starter];
@@ -208,8 +353,10 @@ export const WebStorage = {
     goalData: Omit<MonthlyGoal, 'id' | 'milestones'>,
     milestonesData: Omit<GoalMilestone, 'id' | 'goalId'>[]
   ): MonthlyGoal {
-    const rawGoals = getItem(KEYS.GOALS);
-    const rawMilestones = getItem(KEYS.MILESTONES);
+    const goalsKey = this.getUserKey('goals');
+    const milesKey = this.getUserKey('milestones');
+    const rawGoals = getItem(goalsKey);
+    const rawMilestones = getItem(milesKey);
     const allGoals: any[] = rawGoals ? JSON.parse(rawGoals) : [];
     const allMilestones: GoalMilestone[] = rawMilestones ? JSON.parse(rawMilestones) : [];
 
@@ -232,43 +379,47 @@ export const WebStorage = {
     allGoals.push({ ...goalData, id: goalId });
     allMilestones.push(...newMilestones);
 
-    setItem(KEYS.GOALS, JSON.stringify(allGoals));
-    setItem(KEYS.MILESTONES, JSON.stringify(allMilestones));
+    setItem(goalsKey, JSON.stringify(allGoals));
+    setItem(milesKey, JSON.stringify(allMilestones));
 
     return newGoal;
   },
 
   toggleMilestone(milestoneId: string): void {
-    const rawMilestones = getItem(KEYS.MILESTONES);
+    const milesKey = this.getUserKey('milestones');
+    const rawMilestones = getItem(milesKey);
     const allMilestones: GoalMilestone[] = rawMilestones ? JSON.parse(rawMilestones) : [];
     const milestone = allMilestones.find((m) => m.id === milestoneId);
     if (!milestone) return;
 
     milestone.isCompleted = !milestone.isCompleted;
-    setItem(KEYS.MILESTONES, JSON.stringify(allMilestones));
+    setItem(milesKey, JSON.stringify(allMilestones));
 
-    // Update parent goal count
-    const rawGoals = getItem(KEYS.GOALS);
+    const goalsKey = this.getUserKey('goals');
+    const rawGoals = getItem(goalsKey);
     const allGoals: any[] = rawGoals ? JSON.parse(rawGoals) : [];
     const goal = allGoals.find((g) => g.id === milestone.goalId);
     if (goal) {
       goal.currentMetricValue = allMilestones.filter((m) => m.goalId === goal.id && m.isCompleted).length;
-      setItem(KEYS.GOALS, JSON.stringify(allGoals));
+      setItem(goalsKey, JSON.stringify(allGoals));
     }
   },
 
   deleteMonthlyGoal(goalId: string): void {
-    const rawGoals = getItem(KEYS.GOALS);
-    const rawMilestones = getItem(KEYS.MILESTONES);
+    const goalsKey = this.getUserKey('goals');
+    const milesKey = this.getUserKey('milestones');
+    const rawGoals = getItem(goalsKey);
+    const rawMilestones = getItem(milesKey);
     const allGoals: any[] = rawGoals ? JSON.parse(rawGoals) : [];
     const allMilestones: GoalMilestone[] = rawMilestones ? JSON.parse(rawMilestones) : [];
 
-    setItem(KEYS.GOALS, JSON.stringify(allGoals.filter((g) => g.id !== goalId)));
-    setItem(KEYS.MILESTONES, JSON.stringify(allMilestones.filter((m) => m.goalId !== goalId)));
+    setItem(goalsKey, JSON.stringify(allGoals.filter((g) => g.id !== goalId)));
+    setItem(milesKey, JSON.stringify(allMilestones.filter((m) => m.goalId !== goalId)));
   },
 
-  seedTemplate(archetype: 'freelancer' | 'student' | 'balanced'): void {
-    const template = ARCHETYPE_TEMPLATES[archetype];
+  // ==================== TEMPLATES SEEDING ====================
+  seedTemplate(archetype: ArchetypeType): void {
+    const template = ARCHETYPE_TEMPLATES[archetype as keyof typeof ARCHETYPE_TEMPLATES] || ARCHETYPE_TEMPLATES.prayer;
     if (!template) return;
 
     const daysOfWeek = [0, 1, 2, 3, 4, 5, 6];
@@ -292,14 +443,24 @@ export const WebStorage = {
       };
     });
 
-    setItem(KEYS.TIME_BLOCKS, JSON.stringify(newBlocks));
+    setItem(this.getUserKey('time_blocks'), JSON.stringify(newBlocks));
 
-    // Seed default habits
-    const defaultHabits: Habit[] = [
-      { id: 'habit_1', title: 'Daily Devotion / Mindfulness', categoryId: 'personal', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
-      { id: 'habit_2', title: '30-min Physical Workout', categoryId: 'health', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
-      { id: 'habit_3', title: 'Read 15 Pages', categoryId: 'learning', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
-    ];
-    setItem(KEYS.HABITS, JSON.stringify(defaultHabits));
+    // Seed default habits tailored to the archetype
+    const defaultHabits: Habit[] = archetype === 'prayer'
+      ? [
+          { id: 'habit_1', title: 'Morning Prayer Watch (30m)', categoryId: 'personal', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+          { id: 'habit_2', title: 'Scripture Reading & Meditation', categoryId: 'personal', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+          { id: 'habit_3', title: 'Midday Prayer Pause', categoryId: 'personal', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+          { id: 'habit_4', title: 'Night Thanksgiving & Prayer', categoryId: 'personal', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+          { id: 'habit_5', title: '30-min Physical Workout', categoryId: 'health', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+        ]
+      : [
+          { id: 'habit_1', title: 'Daily Prayer & Devotion', categoryId: 'personal', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+          { id: 'habit_2', title: '30-min Physical Workout', categoryId: 'health', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+          { id: 'habit_3', title: 'Read 15 Pages', categoryId: 'learning', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+          { id: 'habit_4', title: 'Night Thanksgiving', categoryId: 'personal', targetFrequency: 7, currentStreak: 0, bestStreak: 0 },
+        ];
+
+    setItem(this.getUserKey('habits'), JSON.stringify(defaultHabits));
   },
 };

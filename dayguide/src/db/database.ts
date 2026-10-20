@@ -128,7 +128,7 @@ function seedDefaultCategories(db: SQLite.SQLiteDatabase) {
   }
 }
 
-export function seedTemplateNative(archetype: 'freelancer' | 'student' | 'balanced') {
+export function seedTemplateNative(archetype: 'freelancer' | 'student' | 'balanced' | 'prayer') {
   const db = getDatabase();
   if (!db) return;
 
@@ -165,11 +165,20 @@ export function seedTemplateNative(archetype: 'freelancer' | 'student' | 'balanc
   }
 
   db.runSync('DELETE FROM habits');
-  const defaultHabits = [
-    { title: 'Daily Devotion / Mindfulness', categoryId: 'personal' },
-    { title: '30-min Physical Workout', categoryId: 'health' },
-    { title: 'Read 15 Pages', categoryId: 'learning' },
-  ];
+  const defaultHabits = archetype === 'prayer'
+    ? [
+        { title: 'Morning Prayer Watch (30m)', categoryId: 'personal' },
+        { title: 'Scripture Reading & Meditation', categoryId: 'personal' },
+        { title: 'Midday Prayer Pause', categoryId: 'personal' },
+        { title: 'Night Thanksgiving & Prayer', categoryId: 'personal' },
+        { title: '30-min Physical Workout', categoryId: 'health' },
+      ]
+    : [
+        { title: 'Daily Prayer & Devotion', categoryId: 'personal' },
+        { title: '30-min Physical Workout', categoryId: 'health' },
+        { title: 'Read 15 Pages', categoryId: 'learning' },
+        { title: 'Night Thanksgiving', categoryId: 'personal' },
+      ];
 
   for (let i = 0; i < defaultHabits.length; i++) {
     db.runSync(

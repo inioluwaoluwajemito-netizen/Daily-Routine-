@@ -2,6 +2,17 @@ export type Priority = 'P0' | 'P1' | 'P2';
 
 export type BlockStatus = 'pending' | 'in_progress' | 'done' | 'skipped' | 'snoozed';
 
+export type ArchetypeType = 'freelancer' | 'student' | 'balanced' | 'prayer' | 'custom';
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  avatarColor?: string;
+  createdAt: string;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -36,14 +47,17 @@ export interface Habit {
 }
 
 export interface UserProfile {
+  userId?: string;
   name: string;
+  email?: string;
   wakeTime: string;  // "07:00"
   sleepTime: string; // "23:00"
-  archetype: 'freelancer' | 'student' | 'balanced' | 'custom';
+  archetype: ArchetypeType;
   notificationsEnabled: boolean;
   reminderLeadMinutes: number; // e.g. 10
   quietHoursStart?: string;
   quietHoursEnd?: string;
+  includePrayerLife?: boolean;
   isOnboarded: boolean;
 }
 

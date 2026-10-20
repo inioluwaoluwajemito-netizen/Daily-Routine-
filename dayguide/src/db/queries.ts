@@ -1,9 +1,37 @@
 import { Platform } from 'react-native';
 import { getDatabase, seedTemplateNative } from './database';
 import { WebStorage } from './webStorage';
-import { TimeBlock, Habit, UserProfile, Category, CompletionLog, MonthlyGoal, GoalMilestone } from '../types';
+import { TimeBlock, Habit, UserProfile, Category, CompletionLog, MonthlyGoal, GoalMilestone, UserAccount, ArchetypeType } from '../types';
 
-export function seedTemplate(archetype: 'freelancer' | 'student' | 'balanced'): void {
+// ==================== AUTH & ACCOUNTS ====================
+
+export function getUsers(): UserAccount[] {
+  return WebStorage.getUsers();
+}
+
+export function getCurrentUser(): UserAccount | null {
+  return WebStorage.getCurrentUser();
+}
+
+export function getCurrentUserId(): string | null {
+  return WebStorage.getCurrentUserId();
+}
+
+export function registerUser(name: string, email: string, password: string): UserAccount {
+  return WebStorage.registerUser(name, email, password);
+}
+
+export function loginUser(email: string, password: string): UserAccount {
+  return WebStorage.loginUser(email, password);
+}
+
+export function logoutUser(): void {
+  WebStorage.logoutUser();
+}
+
+// ==================== TEMPLATES ====================
+
+export function seedTemplate(archetype: ArchetypeType): void {
   if (Platform.OS === 'web') {
     WebStorage.seedTemplate(archetype);
     return;
@@ -13,7 +41,7 @@ export function seedTemplate(archetype: 'freelancer' | 'student' | 'balanced'): 
     WebStorage.seedTemplate(archetype);
     return;
   }
-  seedTemplateNative(archetype);
+  seedTemplateNative(archetype as any);
 }
 
 // ==================== PROFILE ====================
