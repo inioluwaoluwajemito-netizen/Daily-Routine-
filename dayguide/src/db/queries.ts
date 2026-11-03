@@ -2,6 +2,26 @@ import { Platform } from 'react-native';
 import { getDatabase, seedTemplateNative } from './database';
 import { WebStorage } from './webStorage';
 import { TimeBlock, Habit, UserProfile, Category, CompletionLog, MonthlyGoal, GoalMilestone, UserAccount, ArchetypeType } from '../types';
+import { supabase, isSupabaseConfigured } from './supabase';
+import {
+  migrateLocalStorageToSupabase,
+  pullFromSupabase,
+  pushRoutineUpsert,
+  pushRoutineDelete,
+  pushProfileUpsert,
+  pushHabitUpsert,
+  pushCompletionUpsert,
+  pushAllRoutines,
+  pushAllHabits,
+  pushGoalAndMilestones,
+  pushMilestoneToggle,
+  pushGoalDelete,
+} from './supabaseSync';
+
+export {
+  migrateLocalStorageToSupabase,
+  pullFromSupabase,
+};
 
 // ==================== AUTH & ACCOUNTS ====================
 
@@ -17,6 +37,124 @@ export function getCurrentUserId(): string | null {
   return WebStorage.getCurrentUserId();
 }
 
+export async function loginWithSupabase(email: string, password: string): Promise<UserAccount> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  // If Supabase is configured, use Supabase Auth
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data.user) {
+      throw new Error('Login failed: user data missing.');
+    }
+
+    const account: UserAccount = {
+      id: data.user.id,
+      name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+      email: data.user.email || cleanEmail,
+      avatarColor: '#6366F1',
+      createdAt: data.user.created_at,
+    };
+
+    WebStorage.setCurrentUserId(account.id);
+    // Keep local account registry updated
+    const users = WebStorage.getUsers();
+    if (!users.some((u) => u.id === account.id)) {
+      users.push(account);
+      WebStorage.setItemRaw('dayguide_users', JSON.stringify(users));
+    }
+
+    // Trigger one-time migration and pull latest data
+    try {
+      await migrateLocalStorageToSupabase(account.id);
+      await pullFromSupabase(account.id);
+    } catch (e) {
+      console.warn('Post-login sync error:', e);
+    }
+
+    return account;
+  }
+
+  // Offline / Demo fallback
+  return WebStorage.loginUser(cleanEmail, password);
+}
+
+export async function registerWithSupabase(name: string, email: string, password: string): Promise<UserAccount> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = name.trim() || 'New User';
+
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+      options: {
+        data: {
+          name: cleanName,
+        },
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const userId = data.user?.id || `user_${Date.now()}`;
+    const account: UserAccount = {
+      id: userId,
+      name: cleanName,
+      email: cleanEmail,
+      avatarColor: '#10B981',
+      createdAt: data.user?.created_at || new Date().toISOString(),
+    };
+
+    WebStorage.setCurrentUserId(account.id);
+    const users = WebStorage.getUsers();
+    if (!users.some((u) => u.id === account.id)) {
+      users.push(account);
+      WebStorage.setItemRaw('dayguide_users', JSON.stringify(users));
+    }
+
+    // Create profile row in Supabase
+    try {
+      await supabase.from('profiles').upsert({
+        id: userId,
+        name: cleanName,
+        email: cleanEmail,
+        wake_time: '05:30',
+        sleep_time: '22:30',
+        archetype: 'prayer',
+        is_onboarded: false,
+      });
+      await migrateLocalStorageToSupabase(userId);
+    } catch (e) {
+      console.warn('Post-registration setup error:', e);
+    }
+
+    return account;
+  }
+
+  // Fallback to local storage
+  return WebStorage.registerUser(cleanName, cleanEmail, password);
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    if (isSupabaseConfigured()) {
+      await supabase.auth.signOut();
+    }
+  } catch (err) {
+    console.warn('Supabase signOut error:', err);
+  }
+  WebStorage.logoutUser();
+}
+
 export function registerUser(name: string, email: string, password: string): UserAccount {
   return WebStorage.registerUser(name, email, password);
 }
@@ -25,23 +163,28 @@ export function loginUser(email: string, password: string): UserAccount {
   return WebStorage.loginUser(email, password);
 }
 
-export function logoutUser(): void {
-  WebStorage.logoutUser();
-}
-
 // ==================== TEMPLATES ====================
 
 export function seedTemplate(archetype: ArchetypeType): void {
   if (Platform.OS === 'web') {
     WebStorage.seedTemplate(archetype);
-    return;
+  } else {
+    const db = getDatabase();
+    if (!db) {
+      WebStorage.seedTemplate(archetype);
+    } else {
+      seedTemplateNative(archetype as any);
+    }
   }
-  const db = getDatabase();
-  if (!db) {
-    WebStorage.seedTemplate(archetype);
-    return;
+
+  // Push to Supabase if logged in
+  const uid = getCurrentUserId();
+  if (uid) {
+    const blocks = WebStorage.getAllTimeBlocks();
+    const habits = WebStorage.getHabits();
+    pushAllRoutines(blocks, uid);
+    pushAllHabits(habits, uid);
   }
-  seedTemplateNative(archetype as any);
 }
 
 // ==================== PROFILE ====================
@@ -54,7 +197,7 @@ export function getProfile(): UserProfile | null {
 
   try {
     const row = db.getFirstSync<any>('SELECT * FROM profile WHERE id = ?', ['owner_profile']);
-    if (!row) return null;
+    if (!row) return WebStorage.getProfile();
     return {
       name: row.name,
       wakeTime: row.wake_time,
@@ -70,35 +213,36 @@ export function getProfile(): UserProfile | null {
 }
 
 export function saveProfile(profile: UserProfile): void {
-  if (Platform.OS === 'web') {
-    WebStorage.saveProfile(profile);
-    return;
-  }
+  // 1. Always update local cache
+  WebStorage.saveProfile(profile);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.saveProfile(profile);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      db.runSync(
+        `INSERT OR REPLACE INTO profile 
+         (id, name, wake_time, sleep_time, archetype, notifications_enabled, reminder_lead_minutes, is_onboarded)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          'owner_profile',
+          profile.name,
+          profile.wakeTime,
+          profile.sleepTime,
+          profile.archetype,
+          profile.notificationsEnabled ? 1 : 0,
+          profile.reminderLeadMinutes,
+          profile.isOnboarded ? 1 : 0,
+        ]
+      );
+    } catch (e) {
+      // fallback handled by WebStorage
+    }
   }
 
-  try {
-    db.runSync(
-      `INSERT OR REPLACE INTO profile 
-       (id, name, wake_time, sleep_time, archetype, notifications_enabled, reminder_lead_minutes, is_onboarded)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        'owner_profile',
-        profile.name,
-        profile.wakeTime,
-        profile.sleepTime,
-        profile.archetype,
-        profile.notificationsEnabled ? 1 : 0,
-        profile.reminderLeadMinutes,
-        profile.isOnboarded ? 1 : 0,
-      ]
-    );
-  } catch (e) {
-    WebStorage.saveProfile(profile);
+  // 2. Sync to Supabase
+  const uid = profile.userId || getCurrentUserId();
+  if (uid) {
+    pushProfileUpsert(profile, uid);
   }
 }
 
@@ -177,119 +321,136 @@ export function getTimeBlocksForDay(dayOfWeek: number, dateStr: string): TimeBlo
 }
 
 export function insertTimeBlock(block: Omit<TimeBlock, 'id'>): TimeBlock {
-  if (Platform.OS === 'web') return WebStorage.insertTimeBlock(block);
+  const customBlock = {
+    ...block,
+    source: block.source || 'custom',
+    reminders: block.reminders && block.reminders.length > 0 ? block.reminders : [30, 20, 10, 5],
+  };
+
+  const created = WebStorage.insertTimeBlock(customBlock);
 
   const db = getDatabase();
-  if (!db) return WebStorage.insertTimeBlock(block);
-
-  try {
-    const id = `block_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    db.runSync(
-      `INSERT INTO time_blocks 
-       (id, title, category_id, start_time, end_time, duration_minutes, is_recurring, days_of_week, is_fixed, priority, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        block.title,
-        block.categoryId,
-        block.startTime,
-        block.endTime,
-        block.durationMinutes,
-        block.isRecurring ? 1 : 0,
-        JSON.stringify(block.daysOfWeek),
-        block.isFixed ? 1 : 0,
-        block.priority,
-        block.notes || '',
-      ]
-    );
-    return { ...block, id };
-  } catch (e) {
-    return WebStorage.insertTimeBlock(block);
+  if (db && Platform.OS !== 'web') {
+    try {
+      db.runSync(
+        `INSERT INTO time_blocks 
+         (id, title, category_id, start_time, end_time, duration_minutes, is_recurring, days_of_week, is_fixed, priority, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          created.id,
+          created.title,
+          created.categoryId,
+          created.startTime,
+          created.endTime,
+          created.durationMinutes,
+          created.isRecurring ? 1 : 0,
+          JSON.stringify(created.daysOfWeek),
+          created.isFixed ? 1 : 0,
+          created.priority,
+          created.notes || '',
+        ]
+      );
+    } catch (e) {
+      // fallback handled
+    }
   }
+
+  const uid = getCurrentUserId();
+  if (uid) {
+    pushRoutineUpsert(created, uid);
+  }
+
+  return created;
 }
 
 export function updateTimeBlock(block: TimeBlock): void {
-  if (Platform.OS === 'web') {
-    WebStorage.updateTimeBlock(block);
-    return;
-  }
+  WebStorage.updateTimeBlock(block);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.updateTimeBlock(block);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      db.runSync(
+        `UPDATE time_blocks SET 
+         title = ?, category_id = ?, start_time = ?, end_time = ?, duration_minutes = ?,
+         is_recurring = ?, days_of_week = ?, is_fixed = ?, priority = ?, notes = ?
+         WHERE id = ?`,
+        [
+          block.title,
+          block.categoryId,
+          block.startTime,
+          block.endTime,
+          block.durationMinutes,
+          block.isRecurring ? 1 : 0,
+          JSON.stringify(block.daysOfWeek),
+          block.isFixed ? 1 : 0,
+          block.priority,
+          block.notes || '',
+          block.id,
+        ]
+      );
+    } catch (e) {
+      // fallback handled
+    }
   }
 
-  try {
-    db.runSync(
-      `UPDATE time_blocks SET 
-       title = ?, category_id = ?, start_time = ?, end_time = ?, duration_minutes = ?,
-       is_recurring = ?, days_of_week = ?, is_fixed = ?, priority = ?, notes = ?
-       WHERE id = ?`,
-      [
-        block.title,
-        block.categoryId,
-        block.startTime,
-        block.endTime,
-        block.durationMinutes,
-        block.isRecurring ? 1 : 0,
-        JSON.stringify(block.daysOfWeek),
-        block.isFixed ? 1 : 0,
-        block.priority,
-        block.notes || '',
-        block.id,
-      ]
-    );
-  } catch (e) {
-    WebStorage.updateTimeBlock(block);
+  const uid = getCurrentUserId();
+  if (uid) {
+    pushRoutineUpsert(block, uid);
   }
 }
 
 export function deleteTimeBlock(id: string): void {
-  if (Platform.OS === 'web') {
-    WebStorage.deleteTimeBlock(id);
-    return;
-  }
+  WebStorage.deleteTimeBlock(id);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.deleteTimeBlock(id);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      db.runSync('DELETE FROM time_blocks WHERE id = ?', [id]);
+      db.runSync('DELETE FROM completion_logs WHERE block_id = ?', [id]);
+    } catch (e) {
+      // fallback handled
+    }
   }
 
-  try {
-    db.runSync('DELETE FROM time_blocks WHERE id = ?', [id]);
-    db.runSync('DELETE FROM completion_logs WHERE block_id = ?', [id]);
-  } catch (e) {
-    WebStorage.deleteTimeBlock(id);
+  const uid = getCurrentUserId();
+  if (uid) {
+    pushRoutineDelete(id, uid);
   }
 }
 
 // ==================== COMPLETION LOGS ====================
 
 export function logBlockStatus(blockId: string, dateStr: string, scheduledTime: string, status: 'done' | 'skipped' | 'snoozed'): void {
-  if (Platform.OS === 'web') {
-    WebStorage.logBlockStatus(blockId, dateStr, scheduledTime, status);
-    return;
-  }
+  WebStorage.logBlockStatus(blockId, dateStr, scheduledTime, status);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.logBlockStatus(blockId, dateStr, scheduledTime, status);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      const id = `log_${dateStr}_${blockId}`;
+      const now = new Date().toISOString();
+      db.runSync(
+        `INSERT OR REPLACE INTO completion_logs 
+         (id, block_id, log_date, scheduled_time, status, logged_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id, blockId, dateStr, scheduledTime, status, now]
+      );
+    } catch (e) {
+      // fallback handled
+    }
   }
 
-  try {
-    const id = `log_${dateStr}_${blockId}`;
-    const now = new Date().toISOString();
-    db.runSync(
-      `INSERT OR REPLACE INTO completion_logs 
-       (id, block_id, log_date, scheduled_time, status, logged_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, blockId, dateStr, scheduledTime, status, now]
-    );
-  } catch (e) {
-    WebStorage.logBlockStatus(blockId, dateStr, scheduledTime, status);
+  const uid = getCurrentUserId();
+  if (uid) {
+    const log: CompletionLog = {
+      id: `log_${dateStr}_${blockId}`,
+      userId: uid,
+      blockId,
+      logDate: dateStr,
+      scheduledTime,
+      status,
+      loggedAt: new Date().toISOString(),
+    };
+    pushCompletionUpsert(log, uid);
   }
 }
 
@@ -339,62 +500,63 @@ export function getHabits(): Habit[] {
 }
 
 export function insertHabit(title: string, categoryId: string): void {
-  if (Platform.OS === 'web') {
-    WebStorage.insertHabit(title, categoryId);
-    return;
-  }
+  WebStorage.insertHabit(title, categoryId);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.insertHabit(title, categoryId);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      db.runSync(
+        `INSERT INTO habits (id, title, category_id, target_frequency, current_streak, best_streak)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [`habit_${Date.now()}`, title, categoryId, 7, 0, 0]
+      );
+    } catch (e) {
+      // fallback handled
+    }
   }
 
-  try {
-    db.runSync(
-      `INSERT INTO habits (id, title, category_id, target_frequency, current_streak, best_streak)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [`habit_${Date.now()}`, title, categoryId, 7, 0, 0]
-    );
-  } catch (e) {
-    WebStorage.insertHabit(title, categoryId);
+  const uid = getCurrentUserId();
+  if (uid) {
+    const habits = WebStorage.getHabits();
+    const newest = habits[habits.length - 1];
+    if (newest) pushHabitUpsert(newest, uid);
   }
 }
 
 export function toggleHabitCompletion(habitId: string, todayStr: string): void {
-  if (Platform.OS === 'web') {
-    WebStorage.toggleHabitCompletion(habitId, todayStr);
-    return;
-  }
+  WebStorage.toggleHabitCompletion(habitId, todayStr);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.toggleHabitCompletion(habitId, todayStr);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      const habit = db.getFirstSync<any>('SELECT * FROM habits WHERE id = ?', [habitId]);
+      if (habit) {
+        const isCompletedToday = habit.last_completed_date === todayStr;
+        if (isCompletedToday) {
+          const newStreak = Math.max(0, habit.current_streak - 1);
+          db.runSync(
+            'UPDATE habits SET current_streak = ?, last_completed_date = NULL WHERE id = ?',
+            [newStreak, habitId]
+          );
+        } else {
+          const newStreak = habit.current_streak + 1;
+          const newBest = Math.max(habit.best_streak, newStreak);
+          db.runSync(
+            'UPDATE habits SET current_streak = ?, best_streak = ?, last_completed_date = ? WHERE id = ?',
+            [newStreak, newBest, todayStr, habitId]
+          );
+        }
+      }
+    } catch (e) {
+      // fallback handled
+    }
   }
 
-  try {
-    const habit = db.getFirstSync<any>('SELECT * FROM habits WHERE id = ?', [habitId]);
-    if (!habit) return;
-
-    const isCompletedToday = habit.last_completed_date === todayStr;
-
-    if (isCompletedToday) {
-      const newStreak = Math.max(0, habit.current_streak - 1);
-      db.runSync(
-        'UPDATE habits SET current_streak = ?, last_completed_date = NULL WHERE id = ?',
-        [newStreak, habitId]
-      );
-    } else {
-      const newStreak = habit.current_streak + 1;
-      const newBest = Math.max(habit.best_streak, newStreak);
-      db.runSync(
-        'UPDATE habits SET current_streak = ?, best_streak = ?, last_completed_date = ? WHERE id = ?',
-        [newStreak, newBest, todayStr, habitId]
-      );
-    }
-  } catch (e) {
-    WebStorage.toggleHabitCompletion(habitId, todayStr);
+  const uid = getCurrentUserId();
+  if (uid) {
+    const habits = WebStorage.getHabits();
+    const updated = habits.find((h) => h.id === habitId);
+    if (updated) pushHabitUpsert(updated, uid);
   }
 }
 
@@ -451,106 +613,101 @@ export function insertMonthlyGoal(
   goalData: Omit<MonthlyGoal, 'id' | 'milestones'>,
   milestonesData: Omit<GoalMilestone, 'id' | 'goalId'>[]
 ): MonthlyGoal {
-  if (Platform.OS === 'web') return WebStorage.insertMonthlyGoal(goalData, milestonesData);
+  const createdGoal = WebStorage.insertMonthlyGoal(goalData, milestonesData);
 
   const db = getDatabase();
-  if (!db) return WebStorage.insertMonthlyGoal(goalData, milestonesData);
-
-  try {
-    const goalId = `goal_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    db.runSync(
-      `INSERT INTO goals 
-       (id, title, category_id, month, target_metric_value, current_metric_value, unit, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        goalId,
-        goalData.title,
-        goalData.categoryId,
-        goalData.month,
-        goalData.targetMetricValue,
-        goalData.currentMetricValue,
-        goalData.unit,
-        goalData.status,
-        goalData.notes || '',
-      ]
-    );
-
-    const createdMilestones: GoalMilestone[] = [];
-    for (let i = 0; i < milestonesData.length; i++) {
-      const m = milestonesData[i];
-      const mId = `mile_${goalId}_${i + 1}`;
+  if (db && Platform.OS !== 'web') {
+    try {
       db.runSync(
-        `INSERT INTO goal_milestones (id, goal_id, title, week_number, is_completed, due_date)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [mId, goalId, m.title, m.weekNumber, m.isCompleted ? 1 : 0, m.dueDate || '']
+        `INSERT INTO goals 
+         (id, title, category_id, month, target_metric_value, current_metric_value, unit, status, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          createdGoal.id,
+          goalData.title,
+          goalData.categoryId,
+          goalData.month,
+          goalData.targetMetricValue,
+          goalData.currentMetricValue,
+          goalData.unit,
+          goalData.status,
+          goalData.notes || '',
+        ]
       );
-      createdMilestones.push({
-        id: mId,
-        goalId,
-        title: m.title,
-        weekNumber: m.weekNumber,
-        isCompleted: m.isCompleted,
-        dueDate: m.dueDate,
-      });
-    }
 
-    return { ...goalData, id: goalId, milestones: createdMilestones };
-  } catch (e) {
-    return WebStorage.insertMonthlyGoal(goalData, milestonesData);
+      for (const m of createdGoal.milestones) {
+        db.runSync(
+          `INSERT INTO goal_milestones (id, goal_id, title, week_number, is_completed, due_date)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [m.id, createdGoal.id, m.title, m.weekNumber, m.isCompleted ? 1 : 0, m.dueDate || '']
+        );
+      }
+    } catch (e) {
+      // fallback handled
+    }
   }
+
+  const uid = getCurrentUserId();
+  if (uid) {
+    pushGoalAndMilestones(createdGoal, createdGoal.milestones, uid);
+  }
+
+  return createdGoal;
 }
 
 export function toggleMilestone(milestoneId: string): void {
-  if (Platform.OS === 'web') {
-    WebStorage.toggleMilestone(milestoneId);
-    return;
-  }
+  WebStorage.toggleMilestone(milestoneId);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.toggleMilestone(milestoneId);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      const milestone = db.getFirstSync<any>(
+        'SELECT * FROM goal_milestones WHERE id = ?',
+        [milestoneId]
+      );
+      if (milestone) {
+        const nextState = milestone.is_completed ? 0 : 1;
+        db.runSync('UPDATE goal_milestones SET is_completed = ? WHERE id = ?', [nextState, milestoneId]);
+
+        const completedCount = db.getFirstSync<{ count: number }>(
+          'SELECT COUNT(*) as count FROM goal_milestones WHERE goal_id = ? AND is_completed = 1',
+          [milestone.goal_id]
+        );
+        if (completedCount) {
+          db.runSync('UPDATE goals SET current_metric_value = ? WHERE id = ?', [completedCount.count, milestone.goal_id]);
+        }
+      }
+    } catch (e) {
+      // fallback handled
+    }
   }
 
-  try {
-    const milestone = db.getFirstSync<any>(
-      'SELECT * FROM goal_milestones WHERE id = ?',
-      [milestoneId]
-    );
-    if (!milestone) return;
-
-    const nextState = milestone.is_completed ? 0 : 1;
-    db.runSync('UPDATE goal_milestones SET is_completed = ? WHERE id = ?', [nextState, milestoneId]);
-
-    const completedCount = db.getFirstSync<{ count: number }>(
-      'SELECT COUNT(*) as count FROM goal_milestones WHERE goal_id = ? AND is_completed = 1',
-      [milestone.goal_id]
-    );
-    if (completedCount) {
-      db.runSync('UPDATE goals SET current_metric_value = ? WHERE id = ?', [completedCount.count, milestone.goal_id]);
+  const uid = getCurrentUserId();
+  if (uid) {
+    const milestones = WebStorage.getAllMilestones();
+    const updated = milestones.find((m) => m.id === milestoneId);
+    if (updated) {
+      pushMilestoneToggle(updated, uid);
     }
-  } catch (e) {
-    WebStorage.toggleMilestone(milestoneId);
   }
 }
 
 export function deleteMonthlyGoal(goalId: string): void {
-  if (Platform.OS === 'web') {
-    WebStorage.deleteMonthlyGoal(goalId);
-    return;
-  }
+  WebStorage.deleteMonthlyGoal(goalId);
 
   const db = getDatabase();
-  if (!db) {
-    WebStorage.deleteMonthlyGoal(goalId);
-    return;
+  if (db && Platform.OS !== 'web') {
+    try {
+      db.runSync('DELETE FROM goals WHERE id = ?', [goalId]);
+      db.runSync('DELETE FROM goal_milestones WHERE goal_id = ?', [goalId]);
+    } catch (e) {
+      // fallback handled
+    }
   }
 
-  try {
-    db.runSync('DELETE FROM goals WHERE id = ?', [goalId]);
-    db.runSync('DELETE FROM goal_milestones WHERE goal_id = ?', [goalId]);
-  } catch (e) {
-    WebStorage.deleteMonthlyGoal(goalId);
+  const uid = getCurrentUserId();
+  if (uid) {
+    pushGoalDelete(goalId, uid);
   }
 }
 
@@ -601,5 +758,7 @@ function mapRowToTimeBlock(r: any): TimeBlock {
     isFixed: Boolean(r.is_fixed),
     priority: r.priority as any,
     notes: r.notes || '',
+    source: r.source || 'custom',
+    reminders: r.reminders ? JSON.parse(r.reminders) : [30, 20, 10, 5],
   };
 }

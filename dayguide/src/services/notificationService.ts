@@ -90,12 +90,17 @@ export async function cancelAllReminders(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
-export async function syncAllReminders(blocks: TimeBlock[], leadMinutes: number = 5): Promise<void> {
+export async function syncAllReminders(blocks: TimeBlock[], defaultLeadMinutes: number = 10): Promise<void> {
   if (Platform.OS === 'web') return;
   await cancelAllReminders();
   for (const block of blocks) {
     if (block.isRecurring) {
-      await scheduleBlockReminder(block, leadMinutes);
+      const reminderList = Array.isArray(block.reminders) && block.reminders.length > 0
+        ? block.reminders
+        : [defaultLeadMinutes];
+      for (const lead of reminderList) {
+        await scheduleBlockReminder(block, lead);
+      }
     }
   }
 }

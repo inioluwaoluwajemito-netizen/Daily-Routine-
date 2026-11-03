@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -6,26 +6,39 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { Theme } from '../theme/theme';
 import { Sparkles, Heart, Briefcase, GraduationCap, Compass, Check, Sun, Moon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { ArchetypeType } from '../types';
+import { ArchetypeType, UserProfile } from '../types';
 
 interface OnboardingModalProps {
   visible: boolean;
   userName?: string;
+  currentProfile?: UserProfile | null;
   onComplete: (archetype: 'prayer' | 'freelancer' | 'student' | 'balanced', wakeTime: string, sleepTime: string) => void;
 }
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   visible,
   userName,
+  currentProfile,
   onComplete,
 }) => {
   const [selectedArchetype, setSelectedArchetype] = useState<'prayer' | 'freelancer' | 'student' | 'balanced'>('prayer');
   const [wakeTime, setWakeTime] = useState('05:30');
   const [sleepTime, setSleepTime] = useState('22:30');
+
+  useEffect(() => {
+    if (currentProfile) {
+      if (['prayer', 'freelancer', 'student', 'balanced'].includes(currentProfile.archetype)) {
+        setSelectedArchetype(currentProfile.archetype as any);
+      }
+      if (currentProfile.wakeTime) setWakeTime(currentProfile.wakeTime);
+      if (currentProfile.sleepTime) setSleepTime(currentProfile.sleepTime);
+    }
+  }, [visible, currentProfile]);
 
   const handleSelectArchetype = (type: 'prayer' | 'freelancer' | 'student' | 'balanced') => {
     setSelectedArchetype(type);
@@ -189,14 +202,26 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <Sun size={14} color={Theme.colors.warning} />
                 <Text style={styles.anchorLabel}>Target Wake Up</Text>
               </View>
-              <Text style={styles.anchorTime}>{wakeTime} AM</Text>
+              <TextInput
+                style={styles.anchorInput}
+                value={wakeTime}
+                onChangeText={setWakeTime}
+                placeholder="05:30"
+                placeholderTextColor={Theme.colors.textMuted}
+              />
             </View>
             <View style={styles.anchorBox}>
               <View style={styles.anchorHeaderRow}>
                 <Moon size={14} color={Theme.colors.purple} />
                 <Text style={styles.anchorLabel}>Target Bedtime</Text>
               </View>
-              <Text style={styles.anchorTime}>{sleepTime} PM</Text>
+              <TextInput
+                style={styles.anchorInput}
+                value={sleepTime}
+                onChangeText={setSleepTime}
+                placeholder="22:30"
+                placeholderTextColor={Theme.colors.textMuted}
+              />
             </View>
           </View>
         </ScrollView>
@@ -367,6 +392,16 @@ const styles = StyleSheet.create({
     color: Theme.colors.textPrimary,
     fontSize: 16,
     fontWeight: '800',
+  },
+  anchorInput: {
+    color: Theme.colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(99, 102, 241, 0.4)',
+    minWidth: 70,
   },
   footer: {
     paddingVertical: Theme.spacing.md,

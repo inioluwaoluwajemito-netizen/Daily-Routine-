@@ -9,10 +9,11 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { TimeBlock, Category, Priority } from '../types';
 import { Theme } from '../theme/theme';
-import { X, Trash2, Check, Clock, AlertTriangle } from 'lucide-react-native';
+import { X, Trash2, Check, Bell, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
 
 interface BlockModalProps {
   visible: boolean;
@@ -22,6 +23,19 @@ interface BlockModalProps {
   onSave: (blockData: Omit<TimeBlock, 'id'>, id?: string) => void;
   onDelete?: (id: string) => void;
 }
+
+const DAYS_OF_WEEK = [
+  { label: 'Sun', value: 0 },
+  { label: 'Mon', value: 1 },
+  { label: 'Tue', value: 2 },
+  { label: 'Wed', value: 3 },
+  { label: 'Thu', value: 4 },
+  { label: 'Fri', value: 5 },
+  { label: 'Sat', value: 6 },
+];
+
+const REMINDER_OPTIONS = [30, 20, 10, 5];
+const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
 export const BlockModal: React.FC<BlockModalProps> = ({
   visible,
@@ -34,72 +48,131 @@ export const BlockModal: React.FC<BlockModalProps> = ({
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('work');
   const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('10:00');
+  const [durationMinutes, setDurationMinutes] = useState('60');
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [isFixed, setIsFixed] = useState(false);
   const [priority, setPriority] = useState<Priority>('P1');
+  const [reminders, setReminders] = useState<number[]>([30, 20, 10, 5]);
   const [notes, setNotes] = useState('');
-  const [isRecurring, setIsRecurring] = useState(true);
 
   useEffect(() => {
     if (block) {
       setTitle(block.title);
       setCategoryId(block.categoryId);
-      setStartTime(block.startTime);
-      setEndTime(block.endTime);
-      setIsFixed(block.isFixed);
-      setPriority(block.priority);
+      setStartTime(block.startTime || '09:00');
+      setDurationMinutes(String(block.durationMinutes || 60));
+      setDaysOfWeek(
+        Array.isArray(block.daysOfWeek) && block.daysOfWeek.length > 0
+          ? block.daysOfWeek
+          : [0, 1, 2, 3, 4, 5, 6]
+      );
+      setIsFixed(Boolean(block.isFixed));
+      setPriority(block.priority || 'P1');
+      setReminders(
+        Array.isArray(block.reminders) && block.reminders.length > 0
+          ? block.reminders
+          : [30, 20, 10, 5]
+      );
       setNotes(block.notes || '');
-      setIsRecurring(block.isRecurring);
     } else {
       setTitle('');
       setCategoryId(categories[0]?.id || 'work');
       setStartTime('09:00');
-      setEndTime('10:00');
+      setDurationMinutes('60');
+      setDaysOfWeek([0, 1, 2, 3, 4, 5, 6]);
       setIsFixed(false);
       setPriority('P1');
+      setReminders([30, 20, 10, 5]); // All on by default for new routines
       setNotes('');
-      setIsRecurring(true);
     }
-  }, [block, visible]);
+  }, [block, visible, categories]);
+
+  // Calculate calculated end time for display
+  const calculateEndTime = (start: string, duration: number): string => {
+    const [h = 9, m = 0] = start.split(':').map(Number);
+    const safeH = Number.isNaN(h) ? 9 : h;
+    const safeM = Number.isNaN(m) ? 0 : m;
+    const totalMinutes = safeH * 60 + safeM + duration;
+    const endH = Math.floor(totalMinutes / 60) % 24;
+    const endM = totalMinutes % 60;
+    return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+  };
+
+  const parsedDuration = parseInt(durationMinutes, 10) || 60;
+  const calculatedEndTime = calculateEndTime(startTime, parsedDuration);
+
+  // Toggle day of week
+  const handleToggleDay = (dayValue: number) => {
+    if (daysOfWeek.includes(dayValue)) {
+      if (daysOfWeek.length === 1) return; // Keep at least one day
+      setDaysOfWeek(daysOfWeek.filter((d) => d !== dayValue));
+    } else {
+      setDaysOfWeek([...daysOfWeek, dayValue].sort((a, b) => a - b));
+    }
+  };
+
+  // Toggle reminder lead minutes
+  const handleToggleReminder = (minutes: number) => {
+    if (reminders.includes(minutes)) {
+      setReminders(reminders.filter((m) => m !== minutes));
+    } else {
+      setReminders([...reminders, minutes].sort((a, b) => b - a));
+    }
+  };
 
   const handleSave = () => {
     if (!title.trim()) return;
 
     try {
       const [startH = 9, startM = 0] = (startTime || '09:00').split(':').map(Number);
-      const [endH = 10, endM = 0] = (endTime || '10:00').split(':').map(Number);
-      const safeStartH = Number.isNaN(startH) ? 9 : startH;
-      const safeStartM = Number.isNaN(startM) ? 0 : startM;
-      const safeEndH = Number.isNaN(endH) ? 10 : endH;
-      const safeEndM = Number.isNaN(endM) ? 0 : endM;
-      
-      const durationMinutes = Math.max(
-        15,
-        (safeEndH * 60 + safeEndM) - (safeStartH * 60 + safeStartM)
-      );
+      const safeStartH = Math.min(23, Math.max(0, Number.isNaN(startH) ? 9 : startH));
+      const safeStartM = Math.min(59, Math.max(0, Number.isNaN(startM) ? 0 : startM));
+      const validDuration = Math.max(5, parsedDuration);
 
       const formattedStart = `${safeStartH.toString().padStart(2, '0')}:${safeStartM.toString().padStart(2, '0')}`;
-      const formattedEnd = `${safeEndH.toString().padStart(2, '0')}:${safeEndM.toString().padStart(2, '0')}`;
+      const formattedEnd = calculateEndTime(formattedStart, validDuration);
 
       const data: Omit<TimeBlock, 'id'> = {
         title: title.trim(),
         categoryId: categoryId || 'work',
         startTime: formattedStart,
         endTime: formattedEnd,
-        durationMinutes,
+        durationMinutes: validDuration,
         isRecurring: true,
-        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : [0, 1, 2, 3, 4, 5, 6],
         isFixed,
         priority: priority || 'P1',
+        reminders,
+        source: block ? (block.source || 'custom') : 'custom',
         notes: notes.trim(),
       };
 
       onSave(data, block?.id || undefined);
       onClose();
     } catch (err) {
-      console.error('Error saving block:', err);
+      console.error('Error saving routine block:', err);
       onClose();
     }
+  };
+
+  const handleDelete = () => {
+    if (!block || !onDelete) return;
+
+    Alert.alert(
+      'Delete Routine Block',
+      `Are you sure you want to remove "${block.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            onDelete(block.id);
+            onClose();
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -121,10 +194,10 @@ export const BlockModal: React.FC<BlockModalProps> = ({
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
             {/* Title Input */}
-            <Text style={styles.label}>Activity / Block Title</Text>
+            <Text style={styles.label}>Activity / Routine Title</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Deep Work, Gym, Reading..."
+              placeholder="e.g. Morning Prayer, Deep Work, Gym..."
               placeholderTextColor={Theme.colors.textMuted}
               value={title}
               onChangeText={setTitle}
@@ -157,7 +230,7 @@ export const BlockModal: React.FC<BlockModalProps> = ({
               })}
             </ScrollView>
 
-            {/* Time Pickers (HH:mm) */}
+            {/* Start Time & Duration */}
             <View style={styles.row}>
               <View style={styles.flex1}>
                 <Text style={styles.label}>Start Time (HH:mm)</Text>
@@ -165,20 +238,62 @@ export const BlockModal: React.FC<BlockModalProps> = ({
                   style={styles.timeInput}
                   value={startTime}
                   onChangeText={setStartTime}
-                  placeholder="08:00"
-                  placeholderTextColor={Theme.colors.textMuted}
-                />
-              </View>
-              <View style={styles.flex1}>
-                <Text style={styles.label}>End Time (HH:mm)</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={endTime}
-                  onChangeText={setEndTime}
                   placeholder="09:00"
                   placeholderTextColor={Theme.colors.textMuted}
                 />
               </View>
+              <View style={styles.flex1}>
+                <Text style={styles.label}>Duration (minutes)</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={durationMinutes}
+                  onChangeText={setDurationMinutes}
+                  keyboardType="numeric"
+                  placeholder="60"
+                  placeholderTextColor={Theme.colors.textMuted}
+                />
+              </View>
+            </View>
+
+            {/* Quick Duration Presets & Calculated End Time */}
+            <View style={styles.timePreviewRow}>
+              <View style={styles.presetsRow}>
+                {DURATION_PRESETS.map((mins) => {
+                  const isSelected = parsedDuration === mins;
+                  return (
+                    <TouchableOpacity
+                      key={mins}
+                      style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                      onPress={() => setDurationMinutes(String(mins))}
+                    >
+                      <Text style={[styles.presetText, isSelected && styles.presetTextActive]}>
+                        {mins}m
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.calculatedEndText}>Ends at {calculatedEndTime}</Text>
+            </View>
+
+            {/* Repeat Days (Sun-Sat) */}
+            <Text style={styles.label}>Repeat Days (Sun - Sat)</Text>
+            <View style={styles.daysRow}>
+              {DAYS_OF_WEEK.map((d) => {
+                const isSelected = daysOfWeek.includes(d.value);
+                return (
+                  <TouchableOpacity
+                    key={d.value}
+                    style={[styles.dayBtn, isSelected && styles.dayBtnActive]}
+                    onPress={() => handleToggleDay(d.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dayBtnText, isSelected && styles.dayBtnTextActive]}>
+                      {d.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Priority Selector */}
@@ -196,6 +311,32 @@ export const BlockModal: React.FC<BlockModalProps> = ({
                       style={[styles.priorityBtnText, isSelected && styles.priorityBtnTextActive]}
                     >
                       {p === 'P0' ? 'P0 (Critical)' : p === 'P1' ? 'P1 (Standard)' : 'P2 (Flexible)'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Reminder Toggles (30, 20, 10, 5 minutes before) */}
+            <Text style={styles.label}>Reminders Before Routine</Text>
+            <View style={styles.remindersGrid}>
+              {REMINDER_OPTIONS.map((mins) => {
+                const isChecked = reminders.includes(mins);
+                return (
+                  <TouchableOpacity
+                    key={mins}
+                    style={[styles.reminderPill, isChecked && styles.reminderPillActive]}
+                    onPress={() => handleToggleReminder(mins)}
+                    activeOpacity={0.7}
+                  >
+                    <Bell
+                      size={14}
+                      color={isChecked ? Theme.colors.primaryLight : Theme.colors.textMuted}
+                    />
+                    <Text
+                      style={[styles.reminderPillText, isChecked && styles.reminderPillTextActive]}
+                    >
+                      {mins} mins before
                     </Text>
                   </TouchableOpacity>
                 );
@@ -236,10 +377,8 @@ export const BlockModal: React.FC<BlockModalProps> = ({
             {block && onDelete && (
               <TouchableOpacity
                 style={styles.deleteBtn}
-                onPress={() => {
-                  onDelete(block.id);
-                  onClose();
-                }}
+                onPress={handleDelete}
+                activeOpacity={0.8}
               >
                 <Trash2 size={20} color={Theme.colors.danger} />
               </TouchableOpacity>
@@ -248,9 +387,10 @@ export const BlockModal: React.FC<BlockModalProps> = ({
               style={[styles.saveBtn, !title.trim() && styles.saveBtnDisabled]}
               onPress={handleSave}
               disabled={!title.trim()}
+              activeOpacity={0.8}
             >
               <Check size={18} color="#FFFFFF" />
-              <Text style={styles.saveBtnText}>Save Block</Text>
+              <Text style={styles.saveBtnText}>Save Routine</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -345,6 +485,72 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  timePreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  presetsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  presetChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Theme.radii.sm,
+    backgroundColor: Theme.colors.surface,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  presetChipActive: {
+    borderColor: Theme.colors.primaryLight,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+  },
+  presetText: {
+    color: Theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  presetTextActive: {
+    color: Theme.colors.primaryLight,
+    fontWeight: '700',
+  },
+  calculatedEndText: {
+    color: Theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  daysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  dayBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.radii.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayBtnActive: {
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    borderColor: Theme.colors.primaryLight,
+  },
+  dayBtnText: {
+    color: Theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dayBtnTextActive: {
+    color: Theme.colors.primaryLight,
+    fontWeight: '800',
+  },
   priorityRow: {
     flexDirection: 'row',
     gap: 8,
@@ -369,6 +575,35 @@ const styles = StyleSheet.create({
   },
   priorityBtnTextActive: {
     color: Theme.colors.warning,
+    fontWeight: '700',
+  },
+  remindersGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reminderPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Theme.radii.md,
+    backgroundColor: Theme.colors.surface,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  reminderPillActive: {
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderColor: Theme.colors.primaryLight,
+  },
+  reminderPillText: {
+    color: Theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  reminderPillTextActive: {
+    color: Theme.colors.primaryLight,
     fontWeight: '700',
   },
   toggleRow: {

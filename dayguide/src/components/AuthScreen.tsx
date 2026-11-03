@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Theme } from '../theme/theme';
 import { UserAccount } from '../types';
-import { getUsers, loginUser, registerUser } from '../db/queries';
+import { getUsers, loginWithSupabase, registerWithSupabase, loginUser, registerUser } from '../db/queries';
 import { Sparkles, Mail, Lock, User, Eye, EyeOff, LogIn, UserPlus, Shield, Heart } from 'lucide-react-native';
 
 interface AuthScreenProps {
@@ -34,6 +34,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   // UI state
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [existingUsers, setExistingUsers] = useState<UserAccount[]>([]);
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     } catch {}
   }, []);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setErrorMsg(null);
     if (!loginEmail.trim()) {
       setErrorMsg('Please enter your email or username.');
@@ -59,25 +60,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     }
 
     try {
-      const user = loginUser(loginEmail.trim(), loginPassword);
+      setIsLoading(true);
+      const user = await loginWithSupabase(loginEmail.trim(), loginPassword);
       onAuthSuccess(user);
     } catch (err: any) {
       setErrorMsg(err.message || 'Login failed. Please verify your credentials.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     setErrorMsg(null);
     if (!regName.trim()) {
       setErrorMsg('Please enter your name.');
       return;
     }
     if (!regEmail.trim()) {
-      setErrorMsg('Please enter your email or username.');
+      setErrorMsg('Please enter your email address.');
       return;
     }
-    if (!regPassword || regPassword.length < 4) {
-      setErrorMsg('Password must be at least 4 characters.');
+    if (!regPassword || regPassword.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
       return;
     }
     if (regPassword !== regConfirmPassword) {
@@ -86,25 +90,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     }
 
     try {
-      const newUser = registerUser(regName.trim(), regEmail.trim(), regPassword);
+      setIsLoading(true);
+      const newUser = await registerWithSupabase(regName.trim(), regEmail.trim(), regPassword);
       onAuthSuccess(newUser);
     } catch (err: any) {
       setErrorMsg(err.message || 'Registration failed. User may already exist.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleQuickDemo = () => {
+  const handleQuickDemo = async () => {
     try {
+      setIsLoading(true);
       const users = getUsers();
       if (users.length > 0) {
-        const user = loginUser(users[0].email, users[0].password || 'password123');
+        const user = await loginWithSupabase(users[0].email, users[0].password || 'password123');
         onAuthSuccess(user);
       } else {
-        const demo = registerUser('Demo User', 'demo@dayguide.com', 'password123');
+        const demo = await registerWithSupabase('Demo User', 'demo@dayguide.com', 'password123');
         onAuthSuccess(demo);
       }
     } catch (err: any) {
       setErrorMsg(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -213,11 +223,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 
               {/* Submit Button */}
               <TouchableOpacity
-                style={styles.submitBtn}
+                style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
                 onPress={handleLogin}
+                disabled={isLoading}
                 activeOpacity={0.85}
               >
-                <Text style={styles.submitBtnText}>Sign In to DayGuide</Text>
+                <Text style={styles.submitBtnText}>
+                  {isLoading ? 'Signing In...' : 'Sign In to DayGuide'}
+                </Text>
               </TouchableOpacity>
 
               {/* Quick Demo Button */}
@@ -320,11 +333,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 
               {/* Submit Button */}
               <TouchableOpacity
-                style={styles.submitBtn}
+                style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
                 onPress={handleRegister}
+                disabled={isLoading}
                 activeOpacity={0.85}
               >
-                <Text style={styles.submitBtnText}>Create Account & Start</Text>
+                <Text style={styles.submitBtnText}>
+                  {isLoading ? 'Creating Account...' : 'Create Account & Start'}
+                </Text>
               </TouchableOpacity>
             </View>
           )}

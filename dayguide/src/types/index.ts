@@ -22,6 +22,7 @@ export interface Category {
 
 export interface TimeBlock {
   id: string;
+  userId?: string;
   title: string;
   categoryId: string;
   startTime: string; // "HH:mm" (24-hour format)
@@ -32,12 +33,15 @@ export interface TimeBlock {
   isFixed: boolean;
   priority: Priority;
   notes?: string;
+  source?: 'custom' | 'template';
+  reminders?: number[]; // Minutes before start, e.g. [30, 20, 10, 5]
   status?: BlockStatus; // Runtime or logged status for today
   completedAt?: string;
 }
 
 export interface Habit {
   id: string;
+  userId?: string;
   title: string;
   categoryId: string;
   targetFrequency: number; // times per week
@@ -63,6 +67,7 @@ export interface UserProfile {
 
 export interface CompletionLog {
   id: string;
+  userId?: string;
   blockId: string;
   logDate: string; // YYYY-MM-DD
   scheduledTime: string;
@@ -72,6 +77,7 @@ export interface CompletionLog {
 
 export interface GoalMilestone {
   id: string;
+  userId?: string;
   goalId: string;
   title: string;
   weekNumber: number; // 1, 2, 3, 4
@@ -81,6 +87,7 @@ export interface GoalMilestone {
 
 export interface MonthlyGoal {
   id: string;
+  userId?: string;
   title: string;
   categoryId: string;
   month: string; // "YYYY-MM"

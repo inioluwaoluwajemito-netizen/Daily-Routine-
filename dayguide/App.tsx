@@ -30,7 +30,9 @@ import {
   seedTemplate,
   getCurrentUser,
   logoutUser,
+  pullFromSupabase,
 } from './src/db/queries';
+import { supabase, isSupabaseConfigured } from './src/db/supabase';
 import { getDatabase } from './src/db/database';
 import { initNotifications, syncAllReminders } from './src/services/notificationService';
 import { quickSnoozeBlock } from './src/services/scheduleService';
@@ -94,11 +96,52 @@ export default function App() {
   }, [selectedDayOfWeek]);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    setCurrentUser(user);
-    if (user) {
-      loadData();
-      initNotifications();
+    if (isSupabaseConfigured()) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          const user: UserAccount = {
+            id: session.user.id,
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            email: session.user.email || '',
+            avatarColor: '#6366F1',
+            createdAt: session.user.created_at,
+          };
+          setCurrentUser(user);
+          loadData();
+          initNotifications();
+          pullFromSupabase(user.id).then(() => {
+            const loaded = getProfile();
+            setProfile(loaded);
+            refreshBlocks();
+            refreshHabits();
+            refreshGoals();
+          });
+        }
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          const user: UserAccount = {
+            id: session.user.id,
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            email: session.user.email || '',
+            avatarColor: '#6366F1',
+            createdAt: session.user.created_at,
+          };
+          setCurrentUser(user);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    } else {
+      const user = getCurrentUser();
+      setCurrentUser(user);
+      if (user) {
+        loadData();
+        initNotifications();
+      }
     }
   }, [loadData]);
 
@@ -276,6 +319,13 @@ export default function App() {
     setBlockModalVisible(true);
   };
 
+  const ARCHETYPE_ANCHORS: Record<string, { wakeTime: string; sleepTime: string }> = {
+    prayer: { wakeTime: '05:30', sleepTime: '22:30' },
+    freelancer: { wakeTime: '06:30', sleepTime: '23:00' },
+    student: { wakeTime: '06:00', sleepTime: '22:30' },
+    balanced: { wakeTime: '06:30', sleepTime: '22:30' },
+  };
+
   // Template switch from Settings
   const handleResetToArchetype = (archetype: 'prayer' | 'freelancer' | 'student' | 'balanced') => {
     Alert.alert(
@@ -288,11 +338,21 @@ export default function App() {
           style: 'destructive',
           onPress: () => {
             seedTemplate(archetype);
-            if (profile) {
-              const updated = { ...profile, archetype };
-              saveProfile(updated);
-              setProfile(updated);
-            }
+            const anchors = ARCHETYPE_ANCHORS[archetype] || { wakeTime: '05:30', sleepTime: '22:30' };
+            const updated: UserProfile = {
+              ...(profile || {
+                name: currentUser?.name || 'Owner',
+                notificationsEnabled: true,
+                reminderLeadMinutes: 10,
+                isOnboarded: true,
+              }),
+              userId: currentUser?.id,
+              archetype,
+              wakeTime: anchors.wakeTime,
+              sleepTime: anchors.sleepTime,
+            };
+            saveProfile(updated);
+            setProfile(updated);
             refreshBlocks();
             refreshHabits();
             refreshGoals();
@@ -334,7 +394,16 @@ export default function App() {
               setEditingBlock(block);
               setBlockModalVisible(true);
             }}
-            onRefresh={refreshBlocks}
+            onRefresh={() => {
+              refreshBlocks();
+              if (currentUser?.id) {
+                pullFromSupabase(currentUser.id).then(() => {
+                  refreshBlocks();
+                  refreshHabits();
+                  refreshGoals();
+                });
+              }
+            }}
           />
         )}
 
@@ -509,6 +578,7 @@ export default function App() {
       <OnboardingModal
         visible={onboardingVisible}
         userName={currentUser?.name}
+        currentProfile={profile}
         onComplete={handleOnboardingComplete}
       />
     </SafeAreaView>

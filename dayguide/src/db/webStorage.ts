@@ -53,6 +53,15 @@ const DEFAULT_CATEGORIES: Category[] = [
 ];
 
 export const WebStorage = {
+  // Raw direct storage access
+  getItemRaw(key: string): string | null {
+    return getItem(key);
+  },
+
+  setItemRaw(key: string, value: string): void {
+    setItem(key, value);
+  },
+
   // ==================== MULTI-USER AUTH ====================
   getUsers(): UserAccount[] {
     const raw = getItem(BASE_KEYS.USERS);
@@ -220,10 +229,50 @@ export const WebStorage = {
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
   },
 
+  setAllTimeBlocks(blocks: TimeBlock[]): void {
+    setItem(this.getUserKey('time_blocks'), JSON.stringify(blocks));
+  },
+
+  setAllHabits(habits: Habit[]): void {
+    setItem(this.getUserKey('habits'), JSON.stringify(habits));
+  },
+
+  getAllCompletionLogs(): CompletionLog[] {
+    const raw = getItem(this.getUserKey('completion_logs'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setAllCompletionLogs(completions: CompletionLog[]): void {
+    setItem(this.getUserKey('completion_logs'), JSON.stringify(completions));
+  },
+
+  getAllGoals(): any[] {
+    const raw = getItem(this.getUserKey('goals'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setAllGoals(goals: any[]): void {
+    setItem(this.getUserKey('goals'), JSON.stringify(goals));
+  },
+
+  getAllMilestones(): GoalMilestone[] {
+    const raw = getItem(this.getUserKey('milestones'));
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setAllMilestones(milestones: GoalMilestone[]): void {
+    setItem(this.getUserKey('milestones'), JSON.stringify(milestones));
+  },
+
   insertTimeBlock(block: Omit<TimeBlock, 'id'>): TimeBlock {
     const all = this.getAllTimeBlocks();
     const id = `block_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const newBlock: TimeBlock = { ...block, id };
+    const newBlock: TimeBlock = {
+      ...block,
+      id,
+      source: block.source || 'custom',
+      reminders: block.reminders && block.reminders.length > 0 ? block.reminders : [30, 20, 10, 5],
+    };
     all.push(newBlock);
     setItem(this.getUserKey('time_blocks'), JSON.stringify(all));
     return newBlock;
@@ -439,6 +488,8 @@ export const WebStorage = {
         daysOfWeek,
         isFixed: item.fixed,
         priority: item.priority as any,
+        source: 'template',
+        reminders: [30, 20, 10, 5],
         notes: 'Template routine',
       };
     });

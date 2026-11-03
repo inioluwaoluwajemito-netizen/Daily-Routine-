@@ -73,9 +73,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     );
   };
 
+  const formatAnchorTime = (timeStr?: string, defaultFallback: string = '05:30'): string => {
+    const val = (timeStr || defaultFallback).trim();
+    if (val.includes('AM') || val.includes('PM') || val.includes('am') || val.includes('pm')) {
+      return val;
+    }
+    const [hStr, mStr = '00'] = val.split(':');
+    const h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(h)) return val;
+    const period = h >= 12 ? 'PM' : 'AM';
+    const displayH = h % 12 === 0 ? 12 : h % 12;
+    const padM = (isNaN(m) ? 0 : m).toString().padStart(2, '0');
+    return `${displayH}:${padM} ${period}`;
+  };
+
   const archetypeDisplay = profile?.archetype === 'prayer'
     ? 'SPIRITUAL RHYTHM & PRAYER LIFE'
-    : (profile?.archetype ? profile.archetype.toUpperCase() : 'PRAYER LIFE');
+    : profile?.archetype === 'freelancer'
+    ? 'FREELANCER & CREATOR'
+    : profile?.archetype === 'student'
+    ? 'STUDENT & ACADEMIC'
+    : profile?.archetype === 'balanced'
+    ? 'BALANCED RHYTHM'
+    : (profile?.archetype ? profile.archetype.toUpperCase() : 'SPIRITUAL RHYTHM & PRAYER LIFE');
 
   return (
     <View style={styles.container}>
@@ -114,7 +135,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Sun size={18} color={Theme.colors.warning} />
               <Text style={styles.rowLabel}>Wake-up Target</Text>
             </View>
-            <Text style={styles.rowValue}>{profile?.wakeTime || '05:30'} AM</Text>
+            <Text style={styles.rowValue}>{formatAnchorTime(profile?.wakeTime, '05:30')}</Text>
           </View>
           <View style={styles.separator} />
           <View style={styles.row}>
@@ -122,7 +143,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Moon size={18} color={Theme.colors.purple} />
               <Text style={styles.rowLabel}>Bedtime Target</Text>
             </View>
-            <Text style={styles.rowValue}>{profile?.sleepTime || '22:30'} PM</Text>
+            <Text style={styles.rowValue}>{formatAnchorTime(profile?.sleepTime, '22:30')}</Text>
           </View>
         </View>
 
