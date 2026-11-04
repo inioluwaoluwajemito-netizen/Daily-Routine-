@@ -101,6 +101,8 @@ export const NewGoalModal: React.FC<NewGoalModalProps> = ({
     onClose();
   };
 
+  if (!visible) return null;
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <KeyboardAvoidingView

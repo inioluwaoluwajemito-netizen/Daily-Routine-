@@ -158,6 +158,21 @@ export const BlockModal: React.FC<BlockModalProps> = ({
   const handleDelete = () => {
     if (!block || !onDelete) return;
 
+    const doDelete = () => {
+      onDelete(block.id);
+      onClose();
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm(`Are you sure you want to remove "${block.title}"?`)
+        : true;
+      if (confirmed) {
+        doDelete();
+      }
+      return;
+    }
+
     Alert.alert(
       'Delete Routine Block',
       `Are you sure you want to remove "${block.title}"?`,
@@ -166,14 +181,13 @@ export const BlockModal: React.FC<BlockModalProps> = ({
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            onDelete(block.id);
-            onClose();
-          },
+          onPress: doDelete,
         },
       ]
     );
   };
+
+  if (!visible) return null;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>

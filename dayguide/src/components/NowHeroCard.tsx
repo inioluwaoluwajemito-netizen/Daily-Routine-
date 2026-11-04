@@ -22,17 +22,23 @@ export const NowHeroCard: React.FC<NowHeroCardProps> = ({
   onSkip,
 }) => {
   const handleComplete = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {}
     if (block) onComplete(block);
   };
 
   const handleSnooze = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
     if (block) onSnooze(block);
   };
 
   const handleSkip = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
     if (block) onSkip(block);
   };
 

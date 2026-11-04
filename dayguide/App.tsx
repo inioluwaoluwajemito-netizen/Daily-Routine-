@@ -119,7 +119,7 @@ export default function App() {
         }
       });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (session?.user) {
           const user: UserAccount = {
             id: session.user.id,
@@ -129,6 +129,9 @@ export default function App() {
             createdAt: session.user.created_at,
           };
           setCurrentUser(user);
+        } else if (event === 'SIGNED_OUT' || !session) {
+          setCurrentUser(null);
+          setProfile(null);
         }
       });
 
@@ -181,8 +184,10 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch {}
     setCurrentUser(null);
     setProfile(null);
     setTodayBlocks([]);
@@ -289,15 +294,27 @@ export default function App() {
   };
 
   const handleDeleteGoal = (goalId: string) => {
+    const doDelete = () => {
+      deleteMonthlyGoal(goalId);
+      refreshGoals();
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm('Are you sure you want to remove this monthly goal?')
+        : true;
+      if (confirmed) {
+        doDelete();
+      }
+      return;
+    }
+
     Alert.alert('Delete Goal', 'Are you sure you want to remove this monthly goal?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: () => {
-          deleteMonthlyGoal(goalId);
-          refreshGoals();
-        },
+        onPress: doDelete,
       },
     ]);
   };
@@ -328,6 +345,38 @@ export default function App() {
 
   // Template switch from Settings
   const handleResetToArchetype = (archetype: 'prayer' | 'freelancer' | 'student' | 'balanced') => {
+    const apply = () => {
+      seedTemplate(archetype);
+      const anchors = ARCHETYPE_ANCHORS[archetype] || { wakeTime: '05:30', sleepTime: '22:30' };
+      const updated: UserProfile = {
+        ...(profile || {
+          name: currentUser?.name || 'Owner',
+          notificationsEnabled: true,
+          reminderLeadMinutes: 10,
+          isOnboarded: true,
+        }),
+        userId: currentUser?.id,
+        archetype,
+        wakeTime: anchors.wakeTime,
+        sleepTime: anchors.sleepTime,
+      };
+      saveProfile(updated);
+      setProfile(updated);
+      refreshBlocks();
+      refreshHabits();
+      refreshGoals();
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm(`This will update your routine blocks with the default ${archetype.toUpperCase()} schedule. Continue?`)
+        : true;
+      if (confirmed) {
+        apply();
+      }
+      return;
+    }
+
     Alert.alert(
       'Load Template Routine',
       `This will update your routine blocks with the default ${archetype.toUpperCase()} schedule. Continue?`,
@@ -336,27 +385,7 @@ export default function App() {
         {
           text: 'Apply Template',
           style: 'destructive',
-          onPress: () => {
-            seedTemplate(archetype);
-            const anchors = ARCHETYPE_ANCHORS[archetype] || { wakeTime: '05:30', sleepTime: '22:30' };
-            const updated: UserProfile = {
-              ...(profile || {
-                name: currentUser?.name || 'Owner',
-                notificationsEnabled: true,
-                reminderLeadMinutes: 10,
-                isOnboarded: true,
-              }),
-              userId: currentUser?.id,
-              archetype,
-              wakeTime: anchors.wakeTime,
-              sleepTime: anchors.sleepTime,
-            };
-            saveProfile(updated);
-            setProfile(updated);
-            refreshBlocks();
-            refreshHabits();
-            refreshGoals();
-          },
+          onPress: apply,
         },
       ]
     );
@@ -556,31 +585,38 @@ export default function App() {
       </View>
 
       {/* Block Modal */}
-      <BlockModal
-        visible={blockModalVisible}
-        block={editingBlock}
-        categories={categories}
-        onClose={() => setBlockModalVisible(false)}
-        onSave={handleSaveBlock}
-        onDelete={handleDeleteBlock}
-      />
+      {blockModalVisible && (
+        <BlockModal
+          visible={blockModalVisible}
+          block={editingBlock}
+          categories={categories}
+          onClose={() => setBlockModalVisible(false)}
+          onSave={handleSaveBlock}
+          onDelete={handleDeleteBlock}
+        />
+      )}
 
       {/* New Goal Modal */}
-      <NewGoalModal
-        visible={newGoalModalVisible}
-        categories={categories}
-        currentMonth={currentMonthStr}
-        onClose={() => setNewGoalModalVisible(false)}
-        onSave={handleSaveNewGoal}
-      />
+      {newGoalModalVisible && (
+        <NewGoalModal
+          visible={newGoalModalVisible}
+          categories={categories}
+          currentMonth={currentMonthStr}
+          onClose={() => setNewGoalModalVisible(false)}
+          onSave={handleSaveNewGoal}
+        />
+      )}
 
       {/* Onboarding Questionnaire Modal */}
-      <OnboardingModal
-        visible={onboardingVisible}
-        userName={currentUser?.name}
-        currentProfile={profile}
-        onComplete={handleOnboardingComplete}
-      />
+      {onboardingVisible && (
+        <OnboardingModal
+          visible={onboardingVisible}
+          userName={currentUser?.name}
+          currentProfile={profile}
+          onComplete={handleOnboardingComplete}
+          onClose={() => setOnboardingVisible(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -608,6 +644,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingBottom: Platform.OS === 'ios' ? 16 : 4,
     elevation: 10,
+    zIndex: 100,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.3,

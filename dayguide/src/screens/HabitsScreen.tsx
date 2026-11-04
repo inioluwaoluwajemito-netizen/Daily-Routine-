@@ -88,36 +88,38 @@ export const HabitsScreen: React.FC<HabitsScreenProps> = ({
       </ScrollView>
 
       {/* Add Habit Modal */}
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Track New Habit</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X size={20} color={Theme.colors.textMuted} />
+      {modalVisible && (
+        <Modal visible={modalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Track New Habit</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <X size={20} color={Theme.colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Read 20 pages, 15m Meditation..."
+                placeholderTextColor={Theme.colors.textMuted}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                autoFocus
+              />
+
+              <TouchableOpacity
+                style={[styles.saveBtn, !newTitle.trim() && styles.saveBtnDisabled]}
+                onPress={handleCreate}
+                disabled={!newTitle.trim()}
+              >
+                <Check size={18} color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>Start Habit</Text>
               </TouchableOpacity>
             </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Read 20 pages, 15m Meditation..."
-              placeholderTextColor={Theme.colors.textMuted}
-              value={newTitle}
-              onChangeText={setNewTitle}
-              autoFocus
-            />
-
-            <TouchableOpacity
-              style={[styles.saveBtn, !newTitle.trim() && styles.saveBtnDisabled]}
-              onPress={handleCreate}
-              disabled={!newTitle.trim()}
-            >
-              <Check size={18} color="#FFFFFF" />
-              <Text style={styles.saveBtnText}>Start Habit</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 };

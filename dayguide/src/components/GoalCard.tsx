@@ -38,7 +38,9 @@ export const GoalCard: React.FC<GoalCardProps> = ({
     : 0;
 
   const handleMilestonePress = (mId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
     onToggleMilestone(mId);
   };
 

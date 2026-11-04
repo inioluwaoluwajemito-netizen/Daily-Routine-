@@ -17,7 +17,9 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   onToggle,
 }) => {
   const handleToggle = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
     onToggle(habit);
   };
 

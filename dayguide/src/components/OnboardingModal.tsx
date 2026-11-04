@@ -9,7 +9,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Theme } from '../theme/theme';
-import { Sparkles, Heart, Briefcase, GraduationCap, Compass, Check, Sun, Moon } from 'lucide-react-native';
+import { Sparkles, Heart, Briefcase, GraduationCap, Compass, Check, Sun, Moon, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ArchetypeType, UserProfile } from '../types';
 
@@ -18,6 +18,7 @@ interface OnboardingModalProps {
   userName?: string;
   currentProfile?: UserProfile | null;
   onComplete: (archetype: 'prayer' | 'freelancer' | 'student' | 'balanced', wakeTime: string, sleepTime: string) => void;
+  onClose?: () => void;
 }
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
@@ -25,6 +26,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   userName,
   currentProfile,
   onComplete,
+  onClose,
 }) => {
   const [selectedArchetype, setSelectedArchetype] = useState<'prayer' | 'freelancer' | 'student' | 'balanced'>('prayer');
   const [wakeTime, setWakeTime] = useState('05:30');
@@ -64,9 +66,22 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     onComplete(selectedArchetype, wakeTime, sleepTime);
   };
 
+  if (!visible) return null;
+
   return (
     <Modal visible={visible} animationType="fade" transparent={false}>
       <View style={styles.container}>
+        {/* Close Button if re-running setup */}
+        {onClose && (
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={onClose}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <X size={22} color={Theme.colors.textMuted} />
+          </TouchableOpacity>
+        )}
+
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoBadge}>
@@ -243,6 +258,18 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.background,
     paddingHorizontal: Theme.spacing.lg,
     paddingTop: 50,
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Theme.colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     alignItems: 'center',

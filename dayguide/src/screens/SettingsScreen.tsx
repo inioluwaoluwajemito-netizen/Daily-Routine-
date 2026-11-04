@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Share,
+  Platform,
 } from 'react-native';
 import { UserProfile, UserAccount, ArchetypeType } from '../types';
 import { Theme } from '../theme/theme';
@@ -43,22 +44,52 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 }) => {
   const handleTestNotification = async () => {
     await sendInstantTestNotification();
-    Alert.alert('Notification Sent', 'A local routine reminder was triggered on your device.');
+    if (Platform.OS === 'web') {
+      window.alert('Notification Sent: A local routine reminder was triggered.');
+    } else {
+      Alert.alert('Notification Sent', 'A local routine reminder was triggered on your device.');
+    }
   };
 
   const handleExportBackup = async () => {
     try {
       const json = exportBackupJson();
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dayguide_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
       await Share.share({
         title: 'DayGuide Backup',
         message: json,
       });
     } catch (err) {
-      Alert.alert('Export Error', 'Unable to share backup data.');
+      if (Platform.OS === 'web') {
+        window.alert('Unable to share backup data.');
+      } else {
+        Alert.alert('Export Error', 'Unable to share backup data.');
+      }
     }
   };
 
   const handleConfirmLogout = () => {
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm('Are you sure you want to log out of your DayGuide profile?')
+        : true;
+      if (confirmed) {
+        onLogout();
+      }
+      return;
+    }
+
     Alert.alert(
       'Sign Out',
       'Are you sure you want to log out of your DayGuide profile?',

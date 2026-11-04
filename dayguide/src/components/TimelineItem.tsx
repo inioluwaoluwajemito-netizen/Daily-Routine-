@@ -70,7 +70,10 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       {/* Status Toggle Action */}
       <TouchableOpacity
         style={[styles.statusBtn, isDone && styles.statusBtnDone]}
-        onPress={onToggleStatus}
+        onPress={(e) => {
+          e?.stopPropagation?.();
+          onToggleStatus?.();
+        }}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         {isDone ? (
